@@ -1,0 +1,239 @@
+[
+  {
+    "id": "leave-annual",
+    "question": "年假有多少天？怎么折现？",
+    "must_contain": ["5 天", "10 天", "15 天", "平均工资"],
+    "expected_sources": ["02-请假与考勤制度.md"],
+    "expect_refuse": false,
+    "notes": "手测通过；应命中请假与考勤制度"
+  },
+  {
+    "id": "it-prod-perm",
+    "question": "生产环境权限怎么申请？",
+    "must_contain": ["ITSM", "安全接口人"],
+    "expected_sources": ["04-IT与账号管理.md"],
+    "expect_refuse": false,
+    "notes": "手测通过"
+  },
+  {
+    "id": "travel-hotel",
+    "question": "差旅住宿标准是多少？",
+    "must_contain": ["450", "550", "750"],
+    "expected_sources": ["03-报销与差旅制度.md"],
+    "expect_refuse": false,
+    "notes": "一线城市标准；问法未提二线"
+  },
+  {
+    "id": "release-window",
+    "question": "常规发布窗口是什么时候？紧急热修怎么补单？",
+    "must_contain": ["21:00", "24 小时", "双人复核"],
+    "expected_sources": ["09-发布与变更窗口.md"],
+    "expect_refuse": false,
+    "notes": "易漏「双人复核」；生成侧漏点典型题"
+  },
+  {
+    "id": "sec-l3l4",
+    "question": "L3 和 L4 数据能发到微信或个人网盘吗？",
+    "must_contain": ["个人网盘", ["禁止", "不得", "不能", "不允许", "不可以"]],
+    "expected_sources": ["05-信息安全与数据分级.md"],
+    "expect_refuse": false,
+    "notes": "否定表述用同义组，避免「禁止/不得/不能」误伤"
+  },
+  {
+    "id": "admin-faq",
+    "question": "会议室怎么订？打印机怎么用？",
+    "must_contain": ["飞书日历", "Xingyun-Office"],
+    "expected_sources": ["06-FAQ-行政与日常.md"],
+    "expect_refuse": false,
+    "notes": "复合问；跨 FAQ 两节"
+  },
+  {
+    "id": "csv-xy003",
+    "question": "工号 XY003 是谁？分机多少？",
+    "must_contain": ["周凯", "8002"],
+    "expected_sources": ["员工通讯录-摘录.csv"],
+    "expect_refuse": false,
+    "notes": "CSV 专名；混合检索收益点"
+  },
+  {
+    "id": "onboard-day1",
+    "question": "新员工入职第一天要办哪些事？",
+    "must_contain": ["工牌", "Buddy"],
+    "expected_sources": ["07-入职指引-SOP.md"],
+    "expect_refuse": false,
+    "notes": "入职 SOP"
+  },
+  {
+    "id": "oop-equity",
+    "question": "公司股票期权怎么行权？有没有回购条款？",
+    "must_contain": ["无法确认"],
+    "expect_refuse": true,
+    "notes": "库外题；应拒答；不测 recall"
+  },
+  {
+    "id": "expense-deadline",
+    "question": "报销最晚要在费用发生后多久提交？",
+    "must_contain": ["45"],
+    "expected_sources": ["03-报销与差旅制度.md"],
+    "expect_refuse": false,
+    "notes": "报销时限"
+  },
+  {
+    "id": "vpn-policy",
+    "question": "VPN 什么情况可以申请？个人电脑能存客户数据导出吗？",
+    "must_contain": ["生产故障", ["禁止", "不得", "不能"]],
+    "expected_sources": ["04-IT与账号管理.md"],
+    "expect_refuse": false,
+    "notes": "复合问；IT VPN"
+  },
+  {
+    "id": "change-c3",
+    "question": "C3 高风险变更需要谁审批？",
+    "must_contain": ["安全接口人"],
+    "expected_sources": ["09-发布与变更窗口.md"],
+    "expect_refuse": false,
+    "notes": "变更分级"
+  },
+  {
+    "id": "device-lock",
+    "question": "离开座位多久必须锁屏？设备丢了怎么办？",
+    "must_contain": ["5 分钟", "远程擦除"],
+    "expected_sources": ["05-信息安全与数据分级.md"],
+    "expect_refuse": false,
+    "notes": "易漏第二问要点"
+  },
+  {
+    "id": "meal-standard",
+    "question": "招待客户工作餐人均上限多少？",
+    "must_contain": ["150"],
+    "expected_sources": ["03-报销与差旅制度.md"],
+    "expect_refuse": false,
+    "notes": "日常费用"
+  },
+  {
+    "id": "oop-salary",
+    "question": "今年调薪幅度是多少？绩效 S 档奖金比例？",
+    "must_contain": ["无法确认"],
+    "expect_refuse": true,
+    "notes": "库外题；应拒答；不测 recall"
+  },
+  {
+    "id": "leave-carryover",
+    "question": "当年没休完的年假能结转吗？结转到什么时候？",
+    "must_contain": ["2 天", "3 月 31 日"],
+    "expected_sources": ["02-请假与考勤制度.md"],
+    "expect_refuse": false,
+    "notes": "Week4 新增；年假细节，易漏截止日期"
+  },
+  {
+    "id": "sick-leave-proof",
+    "question": "病假连续超过两天要交什么证明？",
+    "must_contain": ["二级甲等"],
+    "expected_sources": ["02-请假与考勤制度.md"],
+    "expect_refuse": false,
+    "notes": "Week4 新增；病假规则"
+  },
+  {
+    "id": "punch-makeup",
+    "question": "每月可以免费补卡几次？第三次起怎么罚？",
+    "must_contain": ["2 次", "50"],
+    "expected_sources": ["02-请假与考勤制度.md"],
+    "expect_refuse": false,
+    "notes": "Week4 新增；补卡规则"
+  },
+  {
+    "id": "work-hours",
+    "question": "公司标准上班时间是几点到几点？每周最多居家几天？",
+    "must_contain": ["10:00", "19:00", "2 天"],
+    "expected_sources": ["01-员工手册-总则.md"],
+    "expect_refuse": false,
+    "notes": "Week4 新增；员工手册总则；复合要点"
+  },
+  {
+    "id": "probation",
+    "question": "试用期一般多久？试用期发转正薪资的多少？",
+    "must_contain": ["3 个月", "80%"],
+    "expected_sources": ["01-员工手册-总则.md"],
+    "expect_refuse": false,
+    "notes": "Week4 新增；试用期"
+  },
+  {
+    "id": "travel-allowance",
+    "question": "出差离开常驻地市区的差旅补助是多少？",
+    "must_contain": ["100"],
+    "expected_sources": ["03-报销与差旅制度.md"],
+    "expect_refuse": false,
+    "notes": "Week4 新增；差旅补助"
+  },
+  {
+    "id": "password-policy",
+    "question": "密码最短多长？多久必须轮换一次？",
+    "must_contain": ["12", "90"],
+    "expected_sources": ["04-IT与账号管理.md"],
+    "expect_refuse": false,
+    "notes": "Week4 新增；密码策略"
+  },
+  {
+    "id": "leak-report",
+    "question": "发现疑似数据泄露要在多久内报告？找哪个邮箱？",
+    "must_contain": ["1 小时", "security@xingyun-example.com"],
+    "expected_sources": ["05-信息安全与数据分级.md"],
+    "expect_refuse": false,
+    "notes": "Week4 新增；安全红线；易漏邮箱"
+  },
+  {
+    "id": "prod-db-dev",
+    "question": "生产数据库账号能用来本地开发联调吗？",
+    "must_contain": [["禁止", "不得", "不能"]],
+    "expected_sources": ["05-信息安全与数据分级.md"],
+    "expect_refuse": false,
+    "notes": "Week4 新增；安全红线"
+  },
+  {
+    "id": "badge-lost",
+    "question": "工牌丢了怎么补办？工本费多少？",
+    "must_contain": ["ITSM", "30"],
+    "expected_sources": ["06-FAQ-行政与日常.md"],
+    "expect_refuse": false,
+    "notes": "Week4 新增；行政 FAQ"
+  },
+  {
+    "id": "visitor-parking",
+    "question": "员工月卡停车找谁申请？分机多少？",
+    "must_contain": ["沈怡", "8001"],
+    "expected_sources": ["行政服务台.html"],
+    "expect_refuse": false,
+    "notes": "Week4 新增；HTML 行政 Wiki + 专名"
+  },
+  {
+    "id": "csv-xy004",
+    "question": "工号 XY004 是谁？哪个部门？",
+    "must_contain": ["赵宁", "信息安全"],
+    "expected_sources": ["员工通讯录-摘录.csv"],
+    "expect_refuse": false,
+    "notes": "Week4 新增；CSV 专名第二题"
+  },
+  {
+    "id": "product-discount",
+    "question": "星云协作销售最高可以申请多少折扣？超过找谁批？",
+    "must_contain": ["15%", "销售 VP"],
+    "expected_sources": ["08-产品-星云协作-内部说明.md"],
+    "expect_refuse": false,
+    "notes": "Week4 新增；产品对内口径"
+  },
+  {
+    "id": "demo-tenant",
+    "question": "演示租户能录入真实客户数据吗？",
+    "must_contain": [["禁止", "不得", "不能"]],
+    "expected_sources": ["08-产品-星云协作-内部说明.md"],
+    "expect_refuse": false,
+    "notes": "Week4 新增；产品环境红线"
+  },
+  {
+    "id": "oop-headcount",
+    "question": "公司明年头等舱差旅预算和编制扩招名额是多少？",
+    "must_contain": ["无法确认"],
+    "expect_refuse": true,
+    "notes": "Week4 新增；库外拒答第三题；不测 recall"
+  }
+]

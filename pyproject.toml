@@ -1,0 +1,63 @@
+[project]
+name = "rag-knowledge-assistant"
+version = "0.1.0"
+description = "面向异构文档（MD/PDF/HTML/CSV）的生产级 RAG — 公司内部知识助手练习项目"
+requires-python = ">=3.11"
+readme = "README.md"
+
+dependencies = [
+    # --- LLM / embedding ---
+    # OpenAI 兼容 SDK。通义/DashScope/MaaS 通过 OPENAI_BASE_URL 接入，
+    # 业务代码无感知具体厂商，只改 base_url 与模型名即可。
+    "openai>=1.40",
+    "langchain-core>=0.3",
+    "langchain-openai>=0.2",             # ChatOpenAI / OpenAIEmbeddings
+    # --- RAG：切块 / 检索 / 重排 ---
+    "rank-bm25>=0.2",                    # BM25 关键词检索（混合检索的一路）
+    "sentence-transformers>=3.0",        # 本地重排（如 bge-reranker）与备选 embedding
+    # --- 向量库 ---
+    "chromadb>=0.5",                     # 本地持久化向量库
+    # --- 文档加载（多类型语料）---
+    "pypdf>=4.0",                        # PDF
+    "trafilatura>=1.12",                 # HTML → 正文清洗
+    # --- 可靠性 / 配置 / 日志 ---
+    "tenacity>=8.5",                     # LLM 调用退避重试
+    "pydantic>=2.7",
+    "pydantic-settings>=2.3",            # 从 .env 读取类型化配置
+    "structlog>=24.1",                   # 结构化（JSON）日志
+    # --- 可观测性 ---
+    "langfuse>=2.0",                     # 追踪每次 LLM：prompt/token/延迟/成本
+    # --- 评估（第 4 周）---
+    "ragas>=0.1",                        # RAG 专用指标
+    "numpy>=1.26",
+    "colorama>=0.4.6",
+    "ipykernel>=7.3.0",
+    "modelscope>=1.38.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.5",
+]
+# LangChain 版 loader 对照实现（ingest/loaders_lc.py）
+lc = [
+    "langchain-community>=0.3",
+    "beautifulsoup4>=4.12",
+    "lxml>=5.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/rag_assistant"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"

@@ -1,0 +1,19 @@
+# env
+.env
+.venv/
+
+# vector index (rebuild with --ingest)
+data/chroma/
+
+# eval 跑分结果（golden.json 保留进库）
+data/eval/results/
+
+# large third-party clones (optional); 内部练习语料 data/corpus/internal/ 纳入版本库
+data/corpus/markdown/
+
+# python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
