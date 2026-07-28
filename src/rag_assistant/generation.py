@@ -1,9 +1,13 @@
 """生成：把检索到的片段变成带引用的回答。
 
-要求：只依据上下文作答；无依据则拒答；回答末尾标注来源编号。
+要求：只依据上下文作答；无依据则拒答；正文内联 [1][2]…，程序再附结构化来源块。
 """
 
 from __future__ import annotations
+
+import re
+from dataclasses import asdict, dataclass
+from pathlib import Path
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
@@ -14,14 +18,85 @@ from .observability import get_langfuse
 
 log = get_logger(__name__)
 
+_PREVIEW_LEN = 160
+_CITATION_RE = re.compile(r"\[(\d+)\]")
+
 _SYSTEM = """你是「星云科技」内部知识助手。只能根据提供的上下文片段回答员工关于制度、流程、产品内部说明的问题。
 
 规则：
 1. 严格依据上下文作答；若上下文没有答案，回复「根据现有内部文档，我无法确认。」不要猜测或编造制度条款。
-2. 回答末尾用 [1]、[2]… 标注依据的片段编号。
+2. 正文中引用事实时用 [1]、[2]… 标注依据的片段编号（可多处引用同一编号）。
 3. 表述简洁，可直接引用制度中的数字、链接、审批角色。
 4. 若不同片段互相矛盾，明确指出并建议咨询责任部门。
+5. 不要在正文末尾单独罗列「参考来源」——来源列表由系统自动追加。
 """
+
+
+@dataclass(frozen=True)
+class Citation:
+    """单条检索命中及其与正文引用的对应关系。"""
+
+    index: int
+    source: str
+    source_path: str
+    score: float
+    preview: str
+    cited: bool
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+def _chunk_preview(text: str, limit: int = _PREVIEW_LEN) -> str:
+    preview = text.replace("\n", " ").strip()
+    if len(preview) > limit:
+        return preview[:limit] + "…"
+    return preview
+
+
+def cited_indices(answer: str) -> set[int]:
+    """从正文中解析 [1]、[2]… 引用编号。"""
+    return {int(m) for m in _CITATION_RE.findall(answer)}
+
+
+def build_citations(chunks: list[dict], answer: str) -> list[Citation]:
+    """把检索 chunk 映射为带来源文件名、预览与是否被正文引用的列表。"""
+    used = cited_indices(answer)
+    citations: list[Citation] = []
+    for i, chunk in enumerate(chunks, 1):
+        src_path = chunk.get("source", "?")
+        citations.append(
+            Citation(
+                index=i,
+                source=Path(src_path).name,
+                source_path=src_path,
+                score=float(chunk.get("score", 0.0)),
+                preview=_chunk_preview(chunk.get("text", "")),
+                cited=i in used, # 是否被正文引用
+            )
+        )
+    return citations
+
+
+def format_sources_block(citations: list[Citation]) -> str:
+    """生成可读的参考来源块（文件名 + 是否被引用 + 片段预览）。"""
+    if not citations:
+        return ""
+
+    lines = ["", "---", "参考来源："]
+    for c in citations:
+        tag = "已引用" if c.cited else "检索命中"
+        lines.append(f"[{c.index}] {c.source}  ({tag}, score={c.score:.3f})")
+        lines.append(f"    {c.preview}")
+    return "\n".join(lines)
+
+
+def format_answer_with_sources(answer: str, chunks: list[dict]) -> str:
+    """正文 + 程序生成的来源块（CLI / 界面展示用）。"""
+    block = format_sources_block(build_citations(chunks, answer))
+    if not block:
+        return answer
+    return answer.rstrip() + block
 
 
 def _format_context(chunks: list[dict]) -> str:

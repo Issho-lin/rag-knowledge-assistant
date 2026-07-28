@@ -25,10 +25,17 @@ import argparse
 import hashlib
 import shutil
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 from .config import get_settings
-from .generation import generate
+from .generation import (
+    Citation,
+    build_citations,
+    format_answer_with_sources,
+    format_sources_block,
+    generate,
+)
 from .ingest.chunking import chunk_by_heading
 from .ingest.loaders import Document, load_corpus
 from .logging import configure_logging, get_logger
@@ -166,13 +173,20 @@ def _retrieve_and_maybe_rerank(
     return rerank(q, candidates, top_k=k)
 
 
-def _print_chunks(chunks: list[dict]) -> None:
-    print(Fore.BLUE, "\n--- retrieved chunks ---")
-    for i, c in enumerate(chunks, 1):
-        src = Path(c["source"]).name
-        preview = c["text"].replace("\n", " ")[:120]
-        print(f"[{i}] {src} (score={c['score']:.3f}) \n {preview}...")
-    print("--- end chunks ---", Fore.RESET, "\n")
+@dataclass
+class QueryResult:
+    """一次问答的完整结果：正文、检索片段、结构化引用。"""
+
+    answer: str
+    chunks: list[dict]
+    citations: list[Citation]
+
+    def display_text(self) -> str:
+        """供 CLI 打印：正文 + 参考来源块。"""
+        return format_answer_with_sources(self.answer, self.chunks)
+
+    def sources_text(self) -> str:
+        return format_sources_block(self.citations)
 
 
 def retrieve_chunks(
@@ -208,12 +222,13 @@ def query(
     *,
     retrieve: str = "hybrid",
     use_rerank: bool | None = None,
-) -> str:
+) -> QueryResult:
     """检索统一知识库并生成回答；若配置了 Langfuse，整条链路写入一条 trace。"""
     store = VectorStore(chroma_path=_UNIFIED_CHROMA)
     if store.count() == 0:
         log.error("query.empty_store", hint="run --ingest first")
-        return "知识库为空。请先执行：python -m rag_assistant.pipeline --ingest --reset"
+        msg = "知识库为空。请先执行：python -m rag_assistant.pipeline --ingest --reset"
+        return QueryResult(answer=msg, chunks=[], citations=[])
 
     mode = retrieve if retrieve in {"hybrid", "vector"} else "hybrid"
     do_rerank = get_settings().rerank_enabled if use_rerank is None else use_rerank
@@ -221,11 +236,14 @@ def query(
     def _run_retrieve() -> list[dict]:
         return retrieve_chunks(q, k=k, retrieve=mode, use_rerank=do_rerank)
 
+    def _finish(chunks: list[dict]) -> QueryResult:
+        answer = generate(q, chunks) if chunks else "根据现有内部文档，我无法确认。"
+        citations = build_citations(chunks, answer)
+        return QueryResult(answer=answer, chunks=chunks, citations=citations)
+
     lf = get_langfuse()
     if lf is None:
-        chunks = _run_retrieve()
-        _print_chunks(chunks)
-        return generate(q, chunks)
+        return _finish(_run_retrieve())
 
     try:
         with lf.start_as_current_observation(
@@ -249,10 +267,14 @@ def query(
                         for c in chunks
                     ]
                 )
-            _print_chunks(chunks)
-            answer = generate(q, chunks)
-            root.update(output={"answer": answer})
-        return answer
+            result = _finish(chunks)
+            root.update(
+                output={
+                    "answer": result.answer,
+                    "citations": [c.to_dict() for c in result.citations],
+                }
+            )
+        return result
     finally:
         flush_langfuse()
 
@@ -300,18 +322,16 @@ def main() -> None:
         if args.ingest:
             ingest(reset=args.reset, only=args.only)
         elif args.query:
-            print(Fore.CYAN, f"\nQ: {args.query}", Fore.RESET, "\n")
-            print(
-                Fore.CYAN,
-                "A:",
-                query(
-                    args.query,
-                    k=args.k,
-                    retrieve=args.retrieve,
-                    use_rerank=args.use_rerank,
-                ),
-                Fore.RESET,
+            result = query(
+                args.query,
+                k=args.k,
+                retrieve=args.retrieve,
+                use_rerank=args.use_rerank,
             )
+            print(f"{Fore.CYAN}\nQ: {args.query}\n{Fore.RESET}", end="")
+            print(f"{Fore.MAGENTA}\nA: {result.answer}\n{Fore.RESET}", end="")
+            if result.citations:
+                print(f"{Fore.BLUE}{result.sources_text()}{Fore.RESET}")
         else:
             parser.print_help()
             sys.exit(1)

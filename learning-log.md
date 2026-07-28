@@ -57,3 +57,38 @@
 - Step3：`eval_compare` 一键三路对照（vector / hybrid / hybrid+rerank）
 - 待你本地跑：`uv run python tests/eval/compare.py`（可先 `--limit 3` 试跑）
 - 目录整理：eval 脚本迁至 `tests/eval/`（与主流程 `src/rag_assistant/` 分离）
+
+## 2026-07-29 — Week 4 收尾：全量三路对照
+
+- 全量跑通：`uv run python tests/eval/compare.py`（30 题 × 3 路，无 `--limit`）
+- 对照结果（`data/eval/results/compare_latest.json`）：
+
+  | 配置 | pass | keyword | recall@4 |
+  |------|------|---------|----------|
+  | vector_norerank | 30/30 | 1.0 | 27/27 |
+  | hybrid_norerank | 30/30 | 1.0 | 27/27 |
+  | hybrid_rerank | 30/30 | 1.0 | 27/27 |
+
+  明细：`vector_norerank_20260729_001714.json` / `hybrid_norerank_20260729_001952.json` / `hybrid_rerank_20260729_002244.json`
+
+- recall 分母 27：3 道库外拒答题（如 `oop-headcount`）无 `expected_sources`，不计入 recall
+- 三路同分 → **本 golden set 未能区分检索方案优劣**；不据此宣称 hybrid/rerank「无效」，只说明当前 30 题 + 57 chunks 语料下，纯向量已够用，或生成侧能弥补检索差异
+- 与 Week 3 对比：15 题时 hybrid+rerank 曾 14/15；扩题至 30 + 同义组评分后三路均满分——baseline 更稳，但不代表生产全覆盖
+- **默认配置决策**：保持 **hybrid + rerank**（`RERANK_ENABLED=true`，与代码默认一致）
+  - 理由：本批无回归；历史上工号/专名类题 hybrid 更稳；代价是 BM25 + rerank 额外延迟
+  - 若后续只在意速度，可切 `hybrid` 无重排再跑一轮对照验证
+- eval 文档：`tests/eval/README.md`（口述版 + 术语对照 + 结果阅读指南）已提交
+- 本周未新增 pitfalls（无 FAIL 题、无分数掉点需排查）
+- **Week 4 DoD 达成**：扩题 + recall@k + 三路一键对照 + 基线留档
+- **下一步**：第 5 周——来源引用、拒答固化、多轮 + query 改写、最小界面（Gradio/API）；不提前做多 KB / Agent 路由
+
+## 2026-07-29 — Week 5 开始：来源引用
+
+- 目标：答案可追溯，排查时能一眼看到「引了哪条、检索还命中了哪些 chunk」
+- 实现：
+  - `generation.py`：`Citation` 结构体；`build_citations()` 解析正文 `[N]`；`format_sources_block()` 输出参考来源块（文件名 + 已引用/检索命中 + score + 片段预览）
+  - `pipeline.py`：`QueryResult`（answer / chunks / citations）；CLI `--query` 先打正文再打蓝色来源块；Langfuse trace 写入 `citations`
+  - prompt 调整：正文内联 `[N]`，来源列表由程序追加（避免模型重复罗列或漏列）
+- eval 仍只对 `generate()` 正文打分，来源块不参与 keyword 评分
+- 单测：`tests/test_citations.py`
+- **下一步**：拒答策略固化（Week 5 第 2 项）
