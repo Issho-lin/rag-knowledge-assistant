@@ -15,6 +15,7 @@ from .config import get_settings
 from .llm import LLMClient
 from .logging import get_logger
 from .observability import get_langfuse
+from .refusal import REFUSAL_MESSAGE, RefusalReason, is_refusal, pre_llm_refusal
 
 log = get_logger(__name__)
 
@@ -24,12 +25,12 @@ _CITATION_RE = re.compile(r"\[(\d+)\]")
 _SYSTEM = """你是「星云科技」内部知识助手。只能根据提供的上下文片段回答员工关于制度、流程、产品内部说明的问题。
 
 规则：
-1. 严格依据上下文作答；若上下文没有答案，回复「根据现有内部文档，我无法确认。」不要猜测或编造制度条款。
+1. 严格依据上下文作答；若上下文没有答案，回复「{refusal}」不要猜测或编造制度条款。
 2. 正文中引用事实时用 [1]、[2]… 标注依据的片段编号（可多处引用同一编号）。
 3. 表述简洁，可直接引用制度中的数字、链接、审批角色。
 4. 若不同片段互相矛盾，明确指出并建议咨询责任部门。
 5. 不要在正文末尾单独罗列「参考来源」——来源列表由系统自动追加。
-"""
+""".format(refusal=REFUSAL_MESSAGE)
 
 
 @dataclass(frozen=True)
@@ -109,7 +110,7 @@ def _format_context(chunks: list[dict]) -> str:
 def generate(query: str, chunks: list[dict], *, tier: str = "strong") -> str:
     """根据检索片段生成带引用的答案。"""
     if not chunks:
-        return "根据现有内部文档，我无法确认。"
+        return REFUSAL_MESSAGE
 
     context = _format_context(chunks)
     s = get_settings()
@@ -142,3 +143,25 @@ def generate(query: str, chunks: list[dict], *, tier: str = "strong") -> str:
         gen.update(output=answer)
         log.info("generate.done", query=query, n_chunks=len(chunks), tier=tier)
         return answer
+
+
+def produce_answer(
+    query: str,
+    chunks: list[dict],
+    *,
+    use_rerank: bool,
+    tier: str = "strong",
+) -> tuple[str, bool, RefusalReason | None]:
+    """生成答案并应用拒答策略（eval 与 query 共用）。"""
+    reason = pre_llm_refusal(chunks, use_rerank=use_rerank)
+    if reason is not None:
+        log.info(
+            "refuse.pre_llm",
+            reason=reason.value,
+            top_score=chunks[0]["score"] if chunks else None,
+        )
+        return REFUSAL_MESSAGE, True, reason
+
+    answer = generate(query, chunks, tier=tier)
+    refused = is_refusal(answer)
+    return answer, refused, RefusalReason.MODEL if refused else None

@@ -34,12 +34,13 @@ from .generation import (
     build_citations,
     format_answer_with_sources,
     format_sources_block,
-    generate,
+    produce_answer,
 )
 from .ingest.chunking import chunk_by_heading
 from .ingest.loaders import Document, load_corpus
 from .logging import configure_logging, get_logger
 from .observability import flush_langfuse, get_langfuse
+from .refusal import RefusalReason
 from .retrieval.bm25 import BM25Store
 from .retrieval.hybrid import HybridRetriever
 from .retrieval.rerank import rerank
@@ -180,6 +181,8 @@ class QueryResult:
     answer: str
     chunks: list[dict]
     citations: list[Citation]
+    refused: bool = False
+    refusal_reason: RefusalReason | None = None
 
     def display_text(self) -> str:
         """供 CLI 打印：正文 + 参考来源块。"""
@@ -187,6 +190,17 @@ class QueryResult:
 
     def sources_text(self) -> str:
         return format_sources_block(self.citations)
+
+    def refusal_note(self) -> str | None:
+        """拒答原因的人类可读说明（CLI 用）。"""
+        if not self.refused or self.refusal_reason is None:
+            return None
+        labels = {
+            RefusalReason.NO_CHUNKS: "未检索到相关片段",
+            RefusalReason.LOW_CONFIDENCE: "检索置信度过低",
+            RefusalReason.MODEL: "模型判断文档无依据",
+        }
+        return labels.get(self.refusal_reason, self.refusal_reason.value)
 
 
 def retrieve_chunks(
@@ -228,7 +242,7 @@ def query(
     if store.count() == 0:
         log.error("query.empty_store", hint="run --ingest first")
         msg = "知识库为空。请先执行：python -m rag_assistant.pipeline --ingest --reset"
-        return QueryResult(answer=msg, chunks=[], citations=[])
+        return QueryResult(answer=msg, chunks=[], citations=[], refused=True)
 
     mode = retrieve if retrieve in {"hybrid", "vector"} else "hybrid"
     do_rerank = get_settings().rerank_enabled if use_rerank is None else use_rerank
@@ -237,9 +251,14 @@ def query(
         return retrieve_chunks(q, k=k, retrieve=mode, use_rerank=do_rerank)
 
     def _finish(chunks: list[dict]) -> QueryResult:
-        answer = generate(q, chunks) if chunks else "根据现有内部文档，我无法确认。"
-        citations = build_citations(chunks, answer)
-        return QueryResult(answer=answer, chunks=chunks, citations=citations)
+        answer, refused, reason = produce_answer(q, chunks, use_rerank=do_rerank)
+        return QueryResult(
+            answer=answer,
+            chunks=chunks,
+            citations=build_citations(chunks, answer),
+            refused=refused,
+            refusal_reason=reason,
+        )
 
     lf = get_langfuse()
     if lf is None:
@@ -272,6 +291,10 @@ def query(
                 output={
                     "answer": result.answer,
                     "citations": [c.to_dict() for c in result.citations],
+                    "refused": result.refused,
+                    "refusal_reason": (
+                        result.refusal_reason.value if result.refusal_reason else None
+                    ),
                 }
             )
         return result
@@ -330,6 +353,9 @@ def main() -> None:
             )
             print(f"{Fore.CYAN}\nQ: {args.query}\n{Fore.RESET}", end="")
             print(f"{Fore.MAGENTA}\nA: {result.answer}\n{Fore.RESET}", end="")
+            note = result.refusal_note()
+            if note:
+                print(f"{Fore.YELLOW}（拒答：{note}）{Fore.RESET}")
             if result.citations:
                 print(f"{Fore.BLUE}{result.sources_text()}{Fore.RESET}")
         else:

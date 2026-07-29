@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from rag_assistant.refusal import is_refusal, normalize_for_match
+
 
 def normalize(text: str) -> str:
     """比对前去掉半角/全角空格，避免「5 天」与「5天」误伤。"""
-    return text.replace(" ", "").replace("\u3000", "")
+    return normalize_for_match(text)
 
 
 def format_rule(rule: str | list) -> str:
@@ -43,7 +45,7 @@ def score_answer(answer: str, item: dict) -> dict:
     ratio = (len(hits) / len(must)) if must else 0.0
     refuse_ok = True
     if item.get("expect_refuse"):
-        refuse_ok = contains_normalized(answer, "无法确认")
+        refuse_ok = is_refusal(answer)
     passed = ratio >= 1.0 and refuse_ok
     return {
         "keyword_hits": hits,

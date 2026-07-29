@@ -19,7 +19,8 @@ _ROOT = _EVAL_DIR.parents[1]
 if str(_EVAL_DIR) not in sys.path:
     sys.path.insert(0, str(_EVAL_DIR))
 
-from rag_assistant.generation import generate
+from rag_assistant.config import get_settings
+from rag_assistant.generation import produce_answer
 from rag_assistant.logging import configure_logging, get_logger
 from rag_assistant.pipeline import retrieve_chunks
 
@@ -52,7 +53,10 @@ def run(
         if not chunks:
             answer = "知识库为空。请先执行：python -m rag_assistant.pipeline --ingest --reset"
         else:
-            answer = generate(q, chunks)
+            do_rerank = (
+                get_settings().rerank_enabled if use_rerank is None else use_rerank
+            )
+            answer, _, _ = produce_answer(q, chunks, use_rerank=do_rerank)
         scored = score_answer(answer, item)
         recall = score_recall(chunks, item)
         row = {

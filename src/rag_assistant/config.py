@@ -39,6 +39,12 @@ class Settings(BaseSettings):
     rerank_model: str = Field("BAAI/bge-reranker-base", alias="RERANK_MODEL")
     rerank_enabled: bool = Field(True, alias="RERANK_ENABLED")
 
+    # ---- 拒答（Week 5）----
+    # 重排启用时：cross-encoder top-1 低于此值则直接拒答（不调 LLM）
+    refuse_min_rerank_score: float = Field(0.15, alias="REFUSE_MIN_RERANK_SCORE")
+    # 仅向量 / 非 RRF 分数时：余弦相似度 top-1 低于此值则拒答
+    refuse_min_vector_score: float = Field(0.35, alias="REFUSE_MIN_VECTOR_SCORE")
+
     # ---- 存储 / 语料 ----
     # 知识库父目录：其下每个子目录（含 markdown/html/csv）都会被统一入库、统一检索
     corpus_dir: Path = Field(Path("./data/corpus"), alias="CORPUS_DIR")

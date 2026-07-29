@@ -92,3 +92,16 @@
 - eval 仍只对 `generate()` 正文打分，来源块不参与 keyword 评分
 - 单测：`tests/test_citations.py`
 - **下一步**：拒答策略固化（Week 5 第 2 项）
+
+## 2026-07-29 — Week 5：拒答策略固化
+
+- 目标：库外 / 低相关问题时稳定拒答，产品与 eval 用同一套规则
+- 实现：
+  - `refusal.py`：`REFUSAL_MESSAGE` 唯一文案；`is_refusal()`；`pre_llm_refusal()` 生成前检查
+  - **低置信度拒答**：重排启用时 top-1 score < `REFUSE_MIN_RERANK_SCORE`（默认 0.15）→ 不调 LLM，直接拒答（如库外题 rerank≈0.06）
+  - 混合检索无重排时 RRF 分数不可比，跳过 score 门槛，仍靠 prompt + 模型拒答
+  - `produce_answer()`：`query` 与 eval 共用；`QueryResult` 增加 `refused` / `refusal_reason`；CLI 黄色提示拒答原因
+  - eval `scoring.py` 改用 `is_refusal()`，与产品侧一致
+- 配置：`.env.example` 增加 `REFUSE_MIN_RERANK_SCORE` / `REFUSE_MIN_VECTOR_SCORE`
+- 单测：`tests/test_refusal.py`
+- **下一步**：多轮 + query 改写（Week 5 第 3 项）
