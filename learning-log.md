@@ -105,3 +105,26 @@
 - 配置：`.env.example` 增加 `REFUSE_MIN_RERANK_SCORE` / `REFUSE_MIN_VECTOR_SCORE`
 - 单测：`tests/test_refusal.py`
 - **下一步**：多轮 + query 改写（Week 5 第 3 项）
+
+## 2026-07-30 — Week 5：多轮 + query 改写
+
+- 目标：追问带指代时，先结合历史改写成独立检索问句，再 hybrid+rerank 检索
+- 实现：
+  - `conversation.py`：`ChatTurn`、历史裁剪（最近 6 条）、`format_history`
+  - `query_rewrite.py`：`rewrite_for_retrieval()`（cheap 模型）；无历史则跳过 LLM
+  - `pipeline.py`：`query(history=...)` 检索/生成均用改写后问句；`QueryResult.rewritten_query`；`--chat` 交互多轮
+  - Langfuse：`query-rewrite` span；`rag-query` 记录 `rewritten_query`
+- 手测：`uv run python -m rag_assistant.pipeline --chat`，先问年假再问「那病假呢？」，应显示检索问句并答对
+- 单测：`tests/test_query_rewrite.py`
+- **下一步**：最小界面 Gradio/API（Week 5 第 4 项）
+
+## 2026-07-30 — Week 5：Gradio 最小界面
+
+- 目标：本地可演示的多轮助手，能看答案、检索问句与命中 chunk
+- 实现：
+  - `ui.py`：Gradio Blocks；左侧对话、右侧「检索详情」；复用 `query(history=...)`
+  - 依赖：`uv pip install -e ".[ui]"`（`gradio>=5`）
+  - 启动：`uv run python -m rag_assistant.ui`（`--port` / `--share`）
+- 单测：`tests/test_ui.py`（格式化逻辑，不启 Web）
+- **Week 5 DoD 达成**：引用、拒答、多轮改写、最小界面
+- **下一步**：第 6 周复盘（pitfalls、架构图、README、demo）

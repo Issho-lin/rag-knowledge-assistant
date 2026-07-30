@@ -41,6 +41,9 @@ dev = [
     "pytest-asyncio>=0.23",
     "ruff>=0.5",
 ]
+ui = [
+    "gradio>=5.0",
+]
 # LangChain 版 loader 对照实现（ingest/loaders_lc.py）
 lc = [
     "langchain-community>=0.3",

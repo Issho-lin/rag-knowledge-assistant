@@ -4,6 +4,7 @@
 
     uv run python -m rag_assistant.pipeline --ingest --reset
     uv run python -m rag_assistant.pipeline --query "年假怎么算"
+    uv run python -m rag_assistant.pipeline --chat
 
 新增知识：把文件放进 data/corpus/<任意名>/{markdown,html,csv}/，再执行一次 --ingest --reset。
 
@@ -29,6 +30,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .config import get_settings
+from .conversation import ChatTurn
 from .generation import (
     Citation,
     build_citations,
@@ -40,6 +42,7 @@ from .ingest.chunking import chunk_by_heading
 from .ingest.loaders import Document, load_corpus
 from .logging import configure_logging, get_logger
 from .observability import flush_langfuse, get_langfuse
+from .query_rewrite import rewrite_for_retrieval
 from .refusal import RefusalReason
 from .retrieval.bm25 import BM25Store
 from .retrieval.hybrid import HybridRetriever
@@ -183,6 +186,7 @@ class QueryResult:
     citations: list[Citation]
     refused: bool = False
     refusal_reason: RefusalReason | None = None
+    rewritten_query: str | None = None
 
     def display_text(self) -> str:
         """供 CLI 打印：正文 + 参考来源块。"""
@@ -234,6 +238,7 @@ def query(
     q: str,
     k: int = 4,
     *,
+    history: list[ChatTurn] | None = None,
     retrieve: str = "hybrid",
     use_rerank: bool | None = None,
 ) -> QueryResult:
@@ -246,18 +251,20 @@ def query(
 
     mode = retrieve if retrieve in {"hybrid", "vector"} else "hybrid"
     do_rerank = get_settings().rerank_enabled if use_rerank is None else use_rerank
+    search_q = rewrite_for_retrieval(q, history)
 
     def _run_retrieve() -> list[dict]:
-        return retrieve_chunks(q, k=k, retrieve=mode, use_rerank=do_rerank)
+        return retrieve_chunks(search_q, k=k, retrieve=mode, use_rerank=do_rerank)
 
     def _finish(chunks: list[dict]) -> QueryResult:
-        answer, refused, reason = produce_answer(q, chunks, use_rerank=do_rerank)
+        answer, refused, reason = produce_answer(search_q, chunks, use_rerank=do_rerank)
         return QueryResult(
             answer=answer,
             chunks=chunks,
             citations=build_citations(chunks, answer),
             refused=refused,
             refusal_reason=reason,
+            rewritten_query=search_q if search_q != q.strip() else None,
         )
 
     lf = get_langfuse()
@@ -268,12 +275,19 @@ def query(
         with lf.start_as_current_observation(
             name="rag-query",
             as_type="chain",
-            input={"query": q, "k": k, "retrieve": mode, "rerank": do_rerank},
+            input={
+                "query": q,
+                "rewritten_query": search_q,
+                "k": k,
+                "retrieve": mode,
+                "rerank": do_rerank,
+                "history_turns": len(history or []),
+            },
         ) as root:
             with lf.start_as_current_observation(
                 name="retrieve",
                 as_type="retriever",
-                input={"query": q, "k": k, "mode": mode, "rerank": do_rerank},
+                input={"query": search_q, "k": k, "mode": mode, "rerank": do_rerank},
             ) as ret:
                 chunks = _run_retrieve()
                 ret.update(
@@ -290,6 +304,7 @@ def query(
             root.update(
                 output={
                     "answer": result.answer,
+                    "rewritten_query": result.rewritten_query,
                     "citations": [c.to_dict() for c in result.citations],
                     "refused": result.refused,
                     "refusal_reason": (
@@ -300,6 +315,52 @@ def query(
         return result
     finally:
         flush_langfuse()
+
+
+def _print_query_result(question: str, result: QueryResult) -> None:
+    print(f"{Fore.CYAN}\nQ: {question}\n{Fore.RESET}", end="")
+    if result.rewritten_query:
+        print(f"{Fore.CYAN}检索问句: {result.rewritten_query}\n{Fore.RESET}", end="")
+    print(f"{Fore.MAGENTA}\nA: {result.answer}\n{Fore.RESET}", end="")
+    note = result.refusal_note()
+    if note:
+        print(f"{Fore.YELLOW}（拒答：{note}）{Fore.RESET}")
+    if result.citations:
+        print(f"{Fore.BLUE}{result.sources_text()}{Fore.RESET}")
+
+
+def chat(
+    k: int = 4,
+    *,
+    retrieve: str = "hybrid",
+    use_rerank: bool | None = None,
+) -> None:
+    """交互式多轮问答；输入 exit / quit / q 退出。"""
+    configure_logging()
+    history: list[ChatTurn] = []
+    print("星云科技内部知识助手（多轮）。输入 exit / quit / q 退出。\n")
+
+    while True:
+        try:
+            question = input(f"{Fore.GREEN}You: {Fore.RESET}").strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            break
+        if not question:
+            continue
+        if question.lower() in {"exit", "quit", "q"}:
+            break
+
+        result = query(
+            question,
+            k=k,
+            history=history,
+            retrieve=retrieve,
+            use_rerank=use_rerank,
+        )
+        _print_query_result(question, result)
+        history.append(ChatTurn(role="user", content=question))
+        history.append(ChatTurn(role="assistant", content=result.answer))
 
 
 def main() -> None:
@@ -319,6 +380,11 @@ def main() -> None:
         help="可选：仅入库某个语料包目录名（调试用）；默认入库全部",
     )
     parser.add_argument("--query", type=str, help="提出问题（自动查全部已入库知识）")
+    parser.add_argument(
+        "--chat",
+        action="store_true",
+        help="交互式多轮问答（结合历史做 query 改写后再检索）",
+    )
     parser.add_argument("--k", type=int, default=4, help="检索返回的 chunk 条数")
     parser.add_argument(
         "--retrieve",
@@ -344,6 +410,8 @@ def main() -> None:
     try:
         if args.ingest:
             ingest(reset=args.reset, only=args.only)
+        elif args.chat:
+            chat(k=args.k, retrieve=args.retrieve, use_rerank=args.use_rerank)
         elif args.query:
             result = query(
                 args.query,
@@ -351,13 +419,7 @@ def main() -> None:
                 retrieve=args.retrieve,
                 use_rerank=args.use_rerank,
             )
-            print(f"{Fore.CYAN}\nQ: {args.query}\n{Fore.RESET}", end="")
-            print(f"{Fore.MAGENTA}\nA: {result.answer}\n{Fore.RESET}", end="")
-            note = result.refusal_note()
-            if note:
-                print(f"{Fore.YELLOW}（拒答：{note}）{Fore.RESET}")
-            if result.citations:
-                print(f"{Fore.BLUE}{result.sources_text()}{Fore.RESET}")
+            _print_query_result(args.query, result)
         else:
             parser.print_help()
             sys.exit(1)

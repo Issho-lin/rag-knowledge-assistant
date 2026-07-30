@@ -42,4 +42,7 @@ uv run python -m rag_assistant.pipeline --query "年假有多少天？怎么折�
 # 回归评测（golden set，在项目根目录执行）
 uv run python tests/eval/run.py
 uv run python tests/eval/compare.py --limit 3   # 三路对照，可先小规模试跑
+
+# Web 界面（多轮 + 来源侧栏，需 uv pip install -e ".[ui]"）
+uv run python -m rag_assistant.ui
 ```
