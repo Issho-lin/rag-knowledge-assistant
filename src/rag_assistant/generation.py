@@ -37,12 +37,12 @@ _SYSTEM = """你是「星云科技」内部知识助手。只能根据提供的�
 class Citation:
     """单条检索命中及其与正文引用的对应关系。"""
 
-    index: int
-    source: str
-    source_path: str
-    score: float
-    preview: str
-    cited: bool
+    index: int          # 编号，对应正文里的 [1][2]…
+    source: str         # 文件名，如 02-请假与考勤制度.md
+    source_path: str    # 完整路径
+    score: float        # 检索/重排分数
+    preview: str        # 片段预览（前 160 字）
+    cited: bool         # 是否被引用
 
     def to_dict(self) -> dict:
         return asdict(self)

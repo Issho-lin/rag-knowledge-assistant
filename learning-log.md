@@ -128,3 +128,13 @@
 - 单测：`tests/test_ui.py`（格式化逻辑，不启 Web）
 - **Week 5 DoD 达成**：引用、拒答、多轮改写、最小界面
 - **下一步**：第 6 周复盘（pitfalls、架构图、README、demo）
+
+## 2026-07-30 — Week 6：复盘固化
+
+- `rag-pitfalls.md`：补 Week 2 eval 误伤、Week 5 Gradio State、venv 迁移等真实条目
+- `docs/architecture.md`：mermaid 端到端架构 + 模块表 + eval 基线
+- `docs/demo.md`：5 分钟 demo 脚本（正常问答 + 拒答排查 + eval）
+- `README.md`：对齐当前能力、快速开始改 `uv sync`、链到架构与 demo
+- `docs/interview-prep.md`：面试模拟对话与口述稿（新功能迭代时同步更新）
+- **Week 6 DoD 达成**（待你本地：脱稿讲一遍 + 可选录屏）
+- **下一步**：第 7 周及以后（分库 / Profile / Agent 路由）——仅在主线复盘完成后开启

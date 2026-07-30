@@ -1,7 +1,7 @@
 """Gradio 最小 Web 界面：多轮问答 + 检索详情侧栏。
 
 用法（需先入库）：
-    uv sync --extra ui --extra dev
+    uv sync --extra ui
     uv run python -m rag_assistant.ui
 """
 
