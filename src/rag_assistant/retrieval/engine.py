@@ -1,0 +1,86 @@
+"""检索编排：多路子查询、融合、重排、过滤、父文档扩展。"""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any, Callable
+
+from ..config import get_settings
+from ..logging import get_logger
+from ..query_decompose import decompose_for_retrieval
+from .bm25 import BM25Store
+from .context import expand_parent_context
+from .filters import filter_chunks
+from .hybrid import HybridRetriever, rrf_fuse
+from .options import RetrievalOptions
+from .rerank import rerank
+from .vector import VectorStore
+
+log = get_logger(__name__)
+
+RetrieveFn = Callable[[str, int, str], list[dict[str, Any]]]
+
+
+def _base_retrieve(
+    q: str,
+    k: int,
+    mode: str,
+    *,
+    chroma_path: Path,
+    bm25_path: Path,
+) -> list[dict[str, Any]]:
+    store = VectorStore(chroma_path=chroma_path)
+    if mode == "vector":
+        return store.query(q, k=k)
+    bm25 = BM25Store(bm25_path)
+    if bm25.count() == 0:
+        log.warning("retrieve.bm25_empty", hint="run --ingest --reset; fallback to vector")
+        return store.query(q, k=k)
+    return HybridRetriever(store, bm25).query(q, k=k)
+
+
+def retrieve_with_options(
+    q: str,
+    k: int,
+    mode: str,
+    *,
+    do_rerank: bool,
+    options: RetrievalOptions | None = None,
+    chroma_path: Path,
+    bm25_path: Path,
+) -> list[dict[str, Any]]:
+    """统一检索入口：子查询分解 → 召回 → 重排 → 过滤 → 父文档扩展。"""
+    opts = options or RetrievalOptions.from_settings()
+    candidate_k = max(k * 3, 12) if do_rerank else k
+
+    sub_queries = decompose_for_retrieval(q) if opts.decompose else [q]
+    if len(sub_queries) > 1:
+        ranked_lists: list[list[dict[str, Any]]] = []
+        for sq in sub_queries:
+            ranked_lists.append(
+                _base_retrieve(sq, candidate_k, mode, chroma_path=chroma_path, bm25_path=bm25_path)
+            )
+        candidates = rrf_fuse(ranked_lists, k=candidate_k)
+        log.info("retrieve.decomposed", subqueries=sub_queries, fused=len(candidates))
+    else:
+        candidates = _base_retrieve(
+            sub_queries[0], candidate_k, mode, chroma_path=chroma_path, bm25_path=bm25_path
+        )
+
+    if do_rerank and candidates:
+        candidates = rerank(q, candidates, top_k=candidate_k)
+
+    if opts.filter_low_score or opts.metadata_filter:
+        candidates = filter_chunks(
+            candidates,
+            min_score=opts.min_score,
+            metadata_filter=opts.metadata_filter or None,
+            rerank_was_used=do_rerank,
+        )
+
+    chunks = candidates[:k]
+
+    if opts.expand_parent:
+        chunks = expand_parent_context(chunks)
+
+    return chunks

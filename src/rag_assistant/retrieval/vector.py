@@ -14,6 +14,7 @@ from langchain_openai import OpenAIEmbeddings
 from ..config import get_settings
 from ..exceptions import NonRetryableLLMError, RetryableLLMError
 from ..logging import get_logger
+from .metadata import chunk_from_hit
 
 log = get_logger(__name__)
 
@@ -56,6 +57,7 @@ class VectorStore:
         sources: list[str],
         *,
         ids: list[str] | None = None,
+        metadatas: list[dict[str, str | int]] | None = None,
         batch_size: int = 20,
     ) -> int:
         """对 chunk 做 embedding 并 upsert。ids 可选；不传则按内容哈希生成。
@@ -68,6 +70,8 @@ class VectorStore:
             ids = [f"c{i}_{abs(hash(s)) % 10**10}" for i, s in enumerate(chunks)]
         if not (len(ids) == len(chunks) == len(sources)):
             raise ValueError("ids/chunks/sources 长度必须一致")
+        if metadatas is not None and len(metadatas) != len(chunks):
+            raise ValueError("metadatas 长度必须与 chunks 一致")
 
         total = 0
         for start in range(0, len(chunks), batch_size):
@@ -75,12 +79,17 @@ class VectorStore:
             batch_ids = ids[start:end]
             batch_chunks = chunks[start:end]
             batch_sources = sources[start:end]
+            batch_meta = (
+                metadatas[start:end]
+                if metadatas is not None
+                else [{"source": src} for src in batch_sources]
+            )
             embeddings = self._embed_texts(batch_chunks)
             self._coll.upsert(
                 ids=batch_ids,
                 documents=batch_chunks,
                 embeddings=embeddings,
-                metadatas=[{"source": src} for src in batch_sources],
+                metadatas=batch_meta,
             )
             total += len(batch_chunks)
         log.info("vector.add", count=total, batch_size=batch_size)
@@ -97,14 +106,7 @@ class VectorStore:
         metas = res.get("metadatas", [[]])[0]
         dists = res.get("distances", [[]])[0]
         for doc_id, doc, meta, dist in zip(ids, docs, metas, dists):
-            out.append(
-                {
-                    "id": doc_id,
-                    "text": doc,
-                    "source": meta.get("source", "?"),
-                    "score": 1.0 - dist,
-                }
-            )
+            out.append(chunk_from_hit(meta or {}, text=doc, doc_id=doc_id, score=1.0 - dist))
         return out
 
     def count(self) -> int:

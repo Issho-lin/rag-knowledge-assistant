@@ -23,6 +23,7 @@ from rag_assistant.config import get_settings
 from rag_assistant.generation import produce_answer
 from rag_assistant.logging import configure_logging, get_logger
 from rag_assistant.pipeline import retrieve_chunks
+from rag_assistant.retrieval.options import RetrievalOptions
 
 from scoring import score_answer, score_recall
 
@@ -39,6 +40,7 @@ def run(
     retrieve: str = "hybrid",
     use_rerank: bool | None = None,
     tag: str | None = None,
+    retrieval_options: RetrievalOptions | None = None,
 ) -> Path:
     configure_logging()
     items = json.loads(_GOLDEN.read_text(encoding="utf-8"))
@@ -49,7 +51,13 @@ def run(
     for i, item in enumerate(items, 1):
         q = item["question"]
         print(f"\n[{i}/{len(items)}] {item['id']}: {q}")
-        chunks = retrieve_chunks(q, k=k, retrieve=retrieve, use_rerank=use_rerank)
+        chunks = retrieve_chunks(
+            q,
+            k=k,
+            retrieve=retrieve,
+            use_rerank=use_rerank,
+            options=retrieval_options,
+        )
         if not chunks:
             answer = "知识库为空。请先执行：python -m rag_assistant.pipeline --ingest --reset"
         else:
@@ -96,6 +104,16 @@ def run(
         "created_at": datetime.now(timezone.utc).isoformat(),
         "retrieve": retrieve,
         "use_rerank": use_rerank,
+        "retrieval_options": (
+            {
+                "filter_low_score": retrieval_options.filter_low_score,
+                "decompose": retrieval_options.decompose,
+                "expand_parent": retrieval_options.expand_parent,
+                "metadata_filter": retrieval_options.metadata_filter,
+            }
+            if retrieval_options
+            else None
+        ),
         "k": k,
         "tag": label,
         "n": n,

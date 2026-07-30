@@ -138,3 +138,19 @@
 - `docs/interview-prep.md`：面试模拟对话与口述稿（新功能迭代时同步更新）
 - **Week 6 DoD 达成**（待你本地：脱稿讲一遍 + 可选录屏）
 - **下一步**：第 7 周及以后（分库 / Profile / Agent 路由）——仅在主线复盘完成后开启
+
+## 2026-07-30 — Week 7：检索增强（过滤 / 子查询 / 父文档）
+
+- 目标：为后续「每库 Profile」准备可插拔能力；本周仍在统一管线上开关验证
+- 入库增强：`ChunkInfo` + `parent_text`；Chroma/BM25 写入 `domain` / `kind` / `corpus` 元数据
+- 实现：
+  - `retrieval/filters.py`：低分过滤 + 元数据过滤（分库预演）
+  - `query_decompose.py`：复合问拆子查询 → 多路检索 → RRF 合并
+  - `retrieval/context.py`：父文档扩展（子块 → 整节）
+  - `retrieval/options.py` + `retrieval/engine.py`：统一编排；`.env` 开关默认全关
+- eval：`tests/eval/compare.py --suite enhanced` 五路对照（baseline / filter / decompose / parent / all）
+- 决策归属（见 `docs/design-choices.md` §8）：三项默认进 COMMON_PROFILE；通讯录等短块 KB 第 8 周可关 parent_expand
+- **必做**：先 `uv run python -m rag_assistant.pipeline --ingest --reset`（写入 parent_text）
+- 全量对照：`uv run python tests/eval/compare.py --suite enhanced`（30 题 × 5 路）
+- **Week 7 DoD**：三项模块可配 + 对照脚本 + 设计说明
+- **下一步**：第 8 周——KB Registry + 多 Profile 分库 + PDF KB

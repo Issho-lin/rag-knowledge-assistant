@@ -14,6 +14,7 @@ from typing import Any
 from rank_bm25 import BM25Okapi
 
 from ..logging import get_logger
+from .metadata import chunk_from_hit
 
 log = get_logger(__name__)
 
@@ -31,6 +32,7 @@ class BM25Store:
         self._ids: list[str] = []
         self._docs: list[str] = []
         self._sources: list[str] = []
+        self._metadatas: list[dict[str, str | int]] = []
         self._bm25: BM25Okapi | None = None
         if path.is_file():
             self._load()
@@ -40,22 +42,40 @@ class BM25Store:
         self._ids = data["ids"]
         self._docs = data["docs"]
         self._sources = data["sources"]
+        self._metadatas = data.get("metadatas", [{"source": s} for s in self._sources])
         corpus = [tokenize(d) for d in self._docs]
         self._bm25 = BM25Okapi(corpus) if corpus else None
         log.info("bm25.loaded", path=str(self.path), count=len(self._docs))
 
-    def rebuild(self, ids: list[str], docs: list[str], sources: list[str]) -> int:
+    def rebuild(
+        self,
+        ids: list[str],
+        docs: list[str],
+        sources: list[str],
+        *,
+        metadatas: list[dict[str, str | int]] | None = None,
+    ) -> int:
         if not (len(ids) == len(docs) == len(sources)):
             raise ValueError("ids/docs/sources 长度必须一致")
+        if metadatas is not None and len(metadatas) != len(docs):
+            raise ValueError("metadatas 长度必须与 docs 一致")
         self._ids = list(ids)
         self._docs = list(docs)
         self._sources = list(sources)
+        self._metadatas = (
+            list(metadatas) if metadatas is not None else [{"source": s} for s in sources]
+        )
         corpus = [tokenize(d) for d in self._docs]
         self._bm25 = BM25Okapi(corpus) if corpus else None
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.path.write_bytes(
             pickle.dumps(
-                {"ids": self._ids, "docs": self._docs, "sources": self._sources},
+                {
+                    "ids": self._ids,
+                    "docs": self._docs,
+                    "sources": self._sources,
+                    "metadatas": self._metadatas,
+                },
                 protocol=pickle.HIGHEST_PROTOCOL,
             )
         )
@@ -75,13 +95,14 @@ class BM25Store:
         for i in ranked:
             if scores[i] <= 0:
                 continue
+            meta = self._metadatas[i] if i < len(self._metadatas) else {"source": self._sources[i]}
             out.append(
-                {
-                    "id": self._ids[i],
-                    "text": self._docs[i],
-                    "source": self._sources[i],
-                    "score": float(scores[i]),
-                }
+                chunk_from_hit(
+                    meta,
+                    text=self._docs[i],
+                    doc_id=self._ids[i],
+                    score=float(scores[i]),
+                )
             )
         return out
 

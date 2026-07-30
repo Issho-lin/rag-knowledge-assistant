@@ -45,6 +45,12 @@ class Settings(BaseSettings):
     # 仅向量 / 非 RRF 分数时：余弦相似度 top-1 低于此值则拒答
     refuse_min_vector_score: float = Field(0.35, alias="REFUSE_MIN_VECTOR_SCORE")
 
+    # ---- 检索增强（过滤 / 子查询分解 / 父文档扩展）----
+    retrieval_filter_enabled: bool = Field(False, alias="RETRIEVAL_FILTER_ENABLED")
+    retrieval_min_score: float = Field(0.08, alias="RETRIEVAL_MIN_SCORE")
+    query_decompose_enabled: bool = Field(False, alias="QUERY_DECOMPOSE_ENABLED")
+    parent_expand_enabled: bool = Field(False, alias="PARENT_EXPAND_ENABLED")
+
     # ---- 存储 / 语料 ----
     # 知识库父目录：其下每个子目录（含 markdown/html/csv）都会被统一入库、统一检索
     corpus_dir: Path = Field(Path("./data/corpus"), alias="CORPUS_DIR")

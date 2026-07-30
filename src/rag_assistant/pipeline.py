@@ -38,15 +38,16 @@ from .generation import (
     format_sources_block,
     produce_answer,
 )
-from .ingest.chunking import chunk_by_heading
+from .ingest.chunking import chunk_by_heading_info
 from .ingest.loaders import Document, load_corpus
 from .logging import configure_logging, get_logger
 from .observability import flush_langfuse, get_langfuse
 from .query_rewrite import rewrite_for_retrieval
 from .refusal import RefusalReason
 from .retrieval.bm25 import BM25Store
-from .retrieval.hybrid import HybridRetriever
-from .retrieval.rerank import rerank
+from .retrieval.engine import retrieve_with_options
+from .retrieval.metadata import build_chunk_metadata
+from .retrieval.options import RetrievalOptions
 from .retrieval.vector import VectorStore
 
 from colorama import Fore
@@ -116,21 +117,33 @@ def ingest(*, reset: bool = False, only: str | None = None) -> int:
     all_ids: list[str] = []
     all_chunks: list[str] = []
     all_sources: list[str] = []
+    all_metadatas: list[dict[str, str | int]] = []
     for d in docs:
-        chunks = chunk_by_heading(d)
-        for i, chunk in enumerate(chunks):
-            all_ids.append(_chunk_id(d.source, chunk, i))
-            all_chunks.append(chunk)
+        corpus_name = str(d.metadata.get("corpus", "?"))
+        kind = str(d.metadata.get("kind", ""))
+        chunk_infos = chunk_by_heading_info(d)
+        for i, info in enumerate(chunk_infos):
+            all_ids.append(_chunk_id(d.source, info.text, i))
+            all_chunks.append(info.text)
             all_sources.append(d.source)
+            all_metadatas.append(
+                build_chunk_metadata(
+                    source=d.source,
+                    kind=kind,
+                    corpus=corpus_name,
+                    parent_text=info.parent_text,
+                    chunk_index=info.chunk_index,
+                )
+            )
 
     if not all_chunks:
         print("切块结果为空，未写入索引。")
         return 0
 
     store = VectorStore(chroma_path=chroma_path)
-    total = store.add(all_chunks, all_sources, ids=all_ids)
+    total = store.add(all_chunks, all_sources, ids=all_ids, metadatas=all_metadatas)
     bm25 = BM25Store(_BM25_PATH)
-    bm25.rebuild(all_ids, all_chunks, all_sources)
+    bm25.rebuild(all_ids, all_chunks, all_sources, metadatas=all_metadatas)
 
     bundles = sorted({d.metadata.get("corpus", "?") for d in docs})
     log.info(
@@ -148,33 +161,24 @@ def ingest(*, reset: bool = False, only: str | None = None) -> int:
     return total
 
 
-def _retrieve(q: str, k: int, mode: str) -> list[dict]:
-    """召回 k 条；mode=hybrid|vector。"""
-    store = VectorStore(chroma_path=_UNIFIED_CHROMA)
-    if mode == "vector":
-        return store.query(q, k=k)
-    bm25 = BM25Store(_BM25_PATH)
-    if bm25.count() == 0:
-        log.warning("retrieve.bm25_empty", hint="run --ingest --reset; fallback to vector")
-        return store.query(q, k=k)
-    return HybridRetriever(store, bm25).query(q, k=k)
-
-
 def _retrieve_and_maybe_rerank(
     q: str,
     k: int,
     mode: str,
     *,
     do_rerank: bool,
+    options: RetrievalOptions | None = None,
 ) -> list[dict]:
-    """先多召回，可选重排后再截断到 k。"""
-    if not do_rerank:
-        return _retrieve(q, k, mode)
-
-    # 重排需要更多候选，否则精排空间太小，最少 12 条
-    candidate_k = max(k * 3, 12)
-    candidates = _retrieve(q, candidate_k, mode)
-    return rerank(q, candidates, top_k=k)
+    """先多召回，可选重排、过滤、父文档扩展。"""
+    return retrieve_with_options(
+        q,
+        k,
+        mode,
+        do_rerank=do_rerank,
+        options=options,
+        chroma_path=_UNIFIED_CHROMA,
+        bm25_path=_BM25_PATH,
+    )
 
 
 @dataclass
@@ -213,6 +217,7 @@ def retrieve_chunks(
     *,
     retrieve: str = "hybrid",
     use_rerank: bool | None = None,
+    options: RetrievalOptions | None = None,
 ) -> list[dict]:
     """仅检索，返回 top-k chunks（供 eval 测 recall@k；与生成共用同一检索路径）。"""
     configure_logging()
@@ -223,12 +228,16 @@ def retrieve_chunks(
 
     mode = retrieve if retrieve in {"hybrid", "vector"} else "hybrid"
     do_rerank = get_settings().rerank_enabled if use_rerank is None else use_rerank
-    chunks = _retrieve_and_maybe_rerank(q, k, mode, do_rerank=do_rerank)
+    opts = options if options is not None else RetrievalOptions.from_settings()
+    chunks = _retrieve_and_maybe_rerank(q, k, mode, do_rerank=do_rerank, options=opts)
     log.info(
         "retrieve.done",
         mode=mode,
         rerank=do_rerank,
         k=k,
+        filter=opts.filter_low_score,
+        decompose=opts.decompose,
+        parent_expand=opts.expand_parent,
         top_score=chunks[0]["score"] if chunks else None,
     )
     return chunks

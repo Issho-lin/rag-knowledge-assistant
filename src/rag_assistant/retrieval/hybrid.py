@@ -30,11 +30,7 @@ def rrf_fuse(
             scores[doc_id] = scores.get(doc_id, 0.0) + 1.0 / (rrf_k + rank)
             # 保留第一次见到的正文；附加各路原始分便于调试
             if doc_id not in payload:
-                payload[doc_id] = {
-                    "id": doc_id,
-                    "text": item["text"],
-                    "source": item["source"],
-                }
+                payload[doc_id] = dict(item)
     fused = sorted(scores.items(), key=lambda kv: kv[1], reverse=True)[:k]
     out: list[dict[str, Any]] = []
     for doc_id, score in fused:

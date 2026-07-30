@@ -99,3 +99,23 @@
 | Eval / golden set | 用数字验证改动，避免「感觉变好了」 |
 
 加这些时同样会先讲清理由，再改代码——不会先上一个明知更差的版本。
+
+---
+
+## 8. 检索增强：过滤 + 子查询分解 + 父文档扩展
+
+**方案**：三项能力做成可插拔模块（`RetrievalOptions`），默认全关，与 Week 6 baseline 一致。
+
+| 能力 | 实现 | 日后归属 |
+|------|------|----------|
+| **过滤** | 重排后按 `RETRIEVAL_MIN_SCORE` 丢低分 chunk；`metadata_filter` 按 domain/kind/corpus 预演分库 | COMMON_PROFILE（阈值各 KB 可覆盖） |
+| **子查询分解** | cheap LLM 拆复合问句 → 多路检索 → RRF 合并 | COMMON_PROFILE（通讯录等单主题 KB 可关） |
+| **父文档扩展** | 切块时存 `parent_text`；命中子块时扩展为整节 | COMMON_PROFILE（短块 KB 可关） |
+
+| | |
+|--|--|
+| **为什么** | 第 8 周要拆多 KB + Profile，需先把「可配置检索层」做出来并在单库验证 |
+| **好处** | 开关独立、eval 可五路对照；入库元数据（domain/corpus/parent）为分库过滤铺路 |
+| **解决什么** | 复合问只检一次漏半边；子块上下文不足；候选里混低相关噪音 |
+
+**验收**：`uv run python tests/eval/compare.py --suite enhanced`；父文档扩展需先 `--ingest --reset`。
