@@ -19,7 +19,7 @@ _DOMAIN_RULES: list[tuple[tuple[str, ...], str]] = [
 def infer_domain(source: str, *, kind: str = "") -> str:
     """根据文件路径与类型推断领域标签。"""
     if kind == "csv" or source.lower().endswith(".csv"):
-        return "directory"
+        return "tabular"
     name = Path(source).name
     for keywords, domain in _DOMAIN_RULES:
         if any(kw in name for kw in keywords):
@@ -32,6 +32,7 @@ def build_chunk_metadata(
     source: str,
     kind: str,
     corpus: str,
+    kb: str,
     parent_text: str,
     chunk_index: int,
 ) -> dict[str, str | int]:
@@ -40,8 +41,12 @@ def build_chunk_metadata(
         "source": source,
         "kind": kind,
         "corpus": corpus,
+        "kb": kb,
+        # 推断领域-目前没有什么用处，先预留
         "domain": infer_domain(source, kind=kind),
+        # 父文本
         "parent_text": parent_text,
+        # 块索引
         "chunk_index": chunk_index,
     }
 
@@ -56,6 +61,7 @@ def chunk_from_hit(meta: dict[str, Any], *, text: str, doc_id: str, score: float
         "score": score,
         "kind": meta.get("kind", ""),
         "corpus": meta.get("corpus", ""),
+        "kb": meta.get("kb", ""),
         "domain": meta.get("domain", infer_domain(source, kind=str(meta.get("kind", "")))),
         "parent_text": meta.get("parent_text", ""),
         "chunk_index": meta.get("chunk_index", -1),

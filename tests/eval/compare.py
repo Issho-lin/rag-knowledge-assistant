@@ -5,7 +5,7 @@
     uv run python tests/eval/compare.py
     uv run python tests/eval/compare.py --suite retrieval --limit 5
 
-    # 检索增强：filter / decompose / parent / all（固定 hybrid+rerank）
+    # 检索增强：decompose / parent / all（低分过滤已与 rerank 拒答阈值合并）
     uv run python tests/eval/compare.py --suite enhanced
 """
 
@@ -45,33 +45,19 @@ _RETRIEVAL_PROFILES: list[CompareProfile] = [
 _ENHANCED_PROFILES: list[CompareProfile] = [
     CompareProfile(
         "retrieval_baseline",
-        retrieval_options=RetrievalOptions(
-            filter_low_score=False, decompose=False, expand_parent=False
-        ),
-    ),
-    CompareProfile(
-        "retrieval_filter",
-        retrieval_options=RetrievalOptions(
-            filter_low_score=True, decompose=False, expand_parent=False
-        ),
+        retrieval_options=RetrievalOptions(decompose=False, expand_parent=False),
     ),
     CompareProfile(
         "retrieval_decompose",
-        retrieval_options=RetrievalOptions(
-            filter_low_score=False, decompose=True, expand_parent=False
-        ),
+        retrieval_options=RetrievalOptions(decompose=True, expand_parent=False),
     ),
     CompareProfile(
         "retrieval_parent",
-        retrieval_options=RetrievalOptions(
-            filter_low_score=False, decompose=False, expand_parent=True
-        ),
+        retrieval_options=RetrievalOptions(decompose=False, expand_parent=True),
     ),
     CompareProfile(
         "retrieval_all_enhanced",
-        retrieval_options=RetrievalOptions(
-            filter_low_score=True, decompose=True, expand_parent=True
-        ),
+        retrieval_options=RetrievalOptions(decompose=True, expand_parent=True),
     ),
 ]
 
@@ -83,12 +69,13 @@ _SUITES: dict[str, tuple[str, Path, list[CompareProfile], str | None]] = {
         None,
     ),
     "enhanced": (
-        "检索增强五路对照",
+        "检索增强四路对照",
         _ROOT / "data/eval/results/compare_enhanced_retrieval_latest.json",
         _ENHANCED_PROFILES,
         (
-            "filter 需 hybrid+rerank；parent 需 --ingest --reset 写入 parent_text；"
-            "decompose 对复合问句（如 admin-faq）预期 recall 提升"
+            "decompose 对复合问句（如 admin-faq）预期 recall 提升；"
+            "parent 需 --ingest --reset 写入 parent_text；"
+            "rerank 低分过滤已与 REFUSE_MIN_RERANK_SCORE 合并"
         ),
     ),
 }
@@ -167,7 +154,7 @@ def main() -> None:
         "--suite",
         choices=tuple(_SUITES),
         default="retrieval",
-        help="retrieval=vector/hybrid/rerank；enhanced=filter/decompose/parent",
+        help="retrieval=vector/hybrid/rerank；enhanced=decompose/parent",
     )
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--k", type=int, default=4)

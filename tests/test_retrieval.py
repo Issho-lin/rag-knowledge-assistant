@@ -6,13 +6,14 @@ from rag_assistant.ingest.chunking import chunk_by_heading_info
 from rag_assistant.ingest.loaders import Document
 from rag_assistant.query_decompose import _parse_subqueries
 from rag_assistant.retrieval.context import expand_parent_context
-from rag_assistant.retrieval.filters import filter_chunks
+from rag_assistant.retrieval.bm25 import BM25Store
+from rag_assistant.retrieval.filters import chroma_where, filter_chunks
 from rag_assistant.retrieval.metadata import infer_domain
 
 
-def test_infer_domain_hr_and_directory():
+def test_infer_domain_hr_and_tabular():
     assert infer_domain("/data/02-请假与考勤制度.md", kind="markdown") == "hr"
-    assert infer_domain("/data/员工通讯录-摘录.csv", kind="csv") == "directory"
+    assert infer_domain("/data/员工通讯录-摘录.csv", kind="csv") == "tabular"
 
 
 def test_chunk_parent_text_on_long_section():
@@ -28,6 +29,40 @@ def test_chunk_parent_text_on_long_section():
     assert any(info.text != info.parent_text for info in infos)
 
 
+def test_chroma_where_single_and_and():
+    assert chroma_where({"kb": "policies"}) == {"kb": "policies"}
+    assert chroma_where({"kb": "pdf", "corpus": "kb_pdf"}) == {
+        "$and": [{"kb": "pdf"}, {"corpus": "kb_pdf"}],
+    }
+    assert chroma_where({"source_contains": "faq"}) is None
+
+
+def test_bm25_metadata_filter_at_recall(tmp_path):
+    path = tmp_path / "bm25.pkl"
+    store = BM25Store(path)
+    store.rebuild(
+        ["a", "b", "c"],
+        [
+            "西游记孙悟空大闹天宫",
+            "西游记孙悟空取经路上",
+            "七龙珠孙悟空赛亚人",
+        ],
+        ["xiyou.md", "xiyou2.md", "longzhu.md"],
+        metadatas=[
+            {"kb": "xiyou", "source": "xiyou.md"},
+            {"kb": "xiyou", "source": "xiyou2.md"},
+            {"kb": "longzhu", "source": "longzhu.md"},
+        ],
+    )
+    hits = store.query("赛亚人", k=2, metadata_filter={"kb": "longzhu"})
+    assert len(hits) == 1
+    assert hits[0]["kb"] == "longzhu"
+    assert "七龙珠" in hits[0]["text"]
+    # 无过滤时西游记文档也可能因「孙悟空」等字被排到前面；过滤后只剩 longzhu
+    all_hits = store.query("赛亚人", k=3)
+    assert any(h["kb"] == "longzhu" for h in all_hits)
+
+
 def test_filter_by_metadata_and_score():
     chunks = [
         {"id": "a", "text": "t", "source": "hr/a.md", "domain": "hr", "score": 0.9},
@@ -36,7 +71,7 @@ def test_filter_by_metadata_and_score():
     ]
     filtered = filter_chunks(
         chunks,
-        min_score=0.08,
+        min_score=0.15,
         metadata_filter={"domain": "hr"},
         rerank_was_used=True,
     )

@@ -33,6 +33,7 @@ dependencies = [
     "colorama>=0.4.6",
     "ipykernel>=7.3.0",
     "modelscope>=1.38.1",
+    "pymupdf>=1.28.0",
 ]
 
 [project.optional-dependencies]

@@ -1,5 +1,38 @@
 # Learning Log
 
+> **全局路线图**：[`docs/learning-roadmap.md`](docs/learning-roadmap.md)（当前指针、12 周全景、每周 DoD）  
+> **Demo vs 生产**：[`docs/production-gap.md`](docs/production-gap.md)（易漏讲清单、逻辑/物理分库、Chroma 选型）  
+> **详细周计划**：[`ai-app-engineer-2month-plan.md`](ai-app-engineer-2month-plan.md)
+
+---
+
+## 每周收尾模板（含生产认知）
+
+每周日或完成该周 DoD 时，复制一段到下方追加：
+
+```markdown
+## YYYY-MM-DD — 第 N 周收尾
+
+### 本周交付（DoD）
+- [ ] …
+
+### 本周生产认知（必填 3 条）
+1. **Demo 做法**：…
+2. **生产常见**：…（写工具/架构名）
+3. **升级触发**：…
+
+### Eval / 数字
+- …
+
+### 踩坑
+- …
+
+### 下周唯一动作
+- …
+```
+
+---
+
 ## 2026-07-25 — Week 1 开始
 
 - 目标：跑通最简 RAG baseline（ingest → retrieve → generate）
@@ -55,21 +88,21 @@
 - Step1：golden 扩至 30 题；评分支持同义组 + 去空格比对
 - Step2：`expected_sources` + `recall@k`（检索侧）；`pipeline.retrieve_chunks` 供 eval 与生成共用同一检索
 - Step3：`eval_compare` 一键三路对照（vector / hybrid / hybrid+rerank）
-- 待你本地跑：`uv run python tests/eval/compare.py`（可先 `--limit 3` 试跑）
-- 目录整理：eval 脚本迁至 `tests/eval/`（与主流程 `src/rag_assistant/` 分离）
+- 待你本地跑：`uv run python tests/eval/compare.py`（可先加 `--limit 3` 试跑）
+- 目录整理：eval 脚本迁至 `tests/eval/`（与主流程 `src/rag_assistant` 分离）
 
 ## 2026-07-29 — Week 4 收尾：全量三路对照
 
 - 全量跑通：`uv run python tests/eval/compare.py`（30 题 × 3 路，无 `--limit`）
-- 对照结果（`data/eval/results/compare_latest.json`）：
+- 对照结果见 `data/eval/results/compare_latest.json`：
 
-  | 配置 | pass | keyword | recall@4 |
-  |------|------|---------|----------|
-  | vector_norerank | 30/30 | 1.0 | 27/27 |
-  | hybrid_norerank | 30/30 | 1.0 | 27/27 |
-  | hybrid_rerank | 30/30 | 1.0 | 27/27 |
+| 配置 | pass | keyword | recall@4 |
+|------|------|---------|----------|
+| vector_norerank | 30/30 | 1.0 | 27/27 |
+| hybrid_norerank | 30/30 | 1.0 | 27/27 |
+| hybrid_rerank | 30/30 | 1.0 | 27/27 |
 
-  明细：`vector_norerank_20260729_001714.json` / `hybrid_norerank_20260729_001952.json` / `hybrid_rerank_20260729_002244.json`
+- 明细：`vector_norerank_20260729_001714.json` / `hybrid_norerank_20260729_001952.json` / `hybrid_rerank_20260729_002244.json`
 
 - recall 分母 27：3 道库外拒答题（如 `oop-headcount`）无 `expected_sources`，不计入 recall
 - 三路同分 → **本 golden set 未能区分检索方案优劣**；不据此宣称 hybrid/rerank「无效」，只说明当前 30 题 + 57 chunks 语料下，纯向量已够用，或生成侧能弥补检索差异
@@ -153,4 +186,32 @@
 - **必做**：先 `uv run python -m rag_assistant.pipeline --ingest --reset`（写入 parent_text）
 - 全量对照：`uv run python tests/eval/compare.py --suite enhanced`（30 题 × 5 路）
 - **Week 7 DoD**：三项模块可配 + 对照脚本 + 设计说明
+- 拒答/过滤统一：rerank 后按 `REFUSE_MIN_RERANK_SCORE` 滤全部候选，滤空即拒答（去掉 `RETRIEVAL_MIN_SCORE`）
 - **下一步**：第 8 周——KB Registry + 多 Profile 分库 + PDF KB
+
+## 2026-08-02 — 第 8 周收尾 ✅
+
+### 本周交付（DoD）
+- [x] `kb/` Registry + 三 Profile（policies / tabular / pdf）
+- [x] 逻辑分库：`kb` 元数据；`--kb`；召回阶段 Chroma `where` + BM25 子集
+- [x] PDF 语料（10 办公设备、11 园区后勤）；`load_pdf`；ingest **65 chunks**
+- [x] `score_report.py`；golden +4 分库题；`run.py` per-item `kb` / CLI `--kb`
+- [x] `docs/production-gap.md`、`docs/learning-roadmap.md`；README 对齐第 8 周
+- [x] 验收：`pytest` 11 passed；eval **34/34**，`recall@4` **31/31**
+
+### 本周生产认知（必填 3 条）
+1. **Demo 做法**：**逻辑分库**——单 Chroma + 单 `bm25.pkl`，用 `kb` 元数据 + 召回下推过滤；Chroma 本地嵌入式。  
+2. **生产常见**：多租户常 **物理分库**（独立 collection/索引）；向量库常用 **pgvector / Qdrant / Milvus**，关键词用 **ES/OpenSearch**；Agent **一工具一库**。  
+3. **升级触发**：不能混存 → 物理分库；chunk 上万 → ES 倒排；要 HA/权限 → 换托管向量库；用户不选库 → Week 9 Agent 路由。
+
+### Eval / 数字
+- 最终：`hybrid_rerank-default_20260802_003401.json` — pass **34/34**，avg keyword **1.0**，recall@4 **31/31**
+- 分库 4 题全过；库外 3 题（`oop-*`）经修 `run.py`（chunks 滤空走 `produce_answer` 拒答）后通过
+- 中间态：`...002321.json` 曾 31/34（eval 误报「知识库为空」，非检索回退）
+
+### 踩坑
+- eval 与 `pipeline.query` 路径不一致：检索滤空 ≠ 向量库未 ingest
+- 文档曾漏讲物理分库、Chroma 非生产默认——已补 `production-gap` + 路线图「生产认知必填」
+
+### 下周唯一动作
+- **第 9 周**：KB → Agent Tool（function calling）；路由专项 golden；Langfuse 记 `tool_name`

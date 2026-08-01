@@ -235,5 +235,41 @@
     "must_contain": ["无法确认"],
     "expect_refuse": true,
     "notes": "Week4 新增；库外拒答第三题；不测 recall"
+  },
+  {
+    "id": "pdf-printer-jam",
+    "question": "办公打印机卡纸了应该怎么处理？",
+    "must_contain": ["侧盖", "8001"],
+    "expected_sources": ["10-办公设备操作手册.pdf"],
+    "expect_refuse": false,
+    "kb": "pdf",
+    "notes": "Week8 分库专项；仅 pdf KB；设备手册"
+  },
+  {
+    "id": "pdf-visitor-parking",
+    "question": "园区访客车辆临停怎么收费？",
+    "must_contain": ["5 元", "40 元"],
+    "expected_sources": ["11-园区设施与后勤服务手册.pdf"],
+    "expect_refuse": false,
+    "kb": "pdf",
+    "notes": "Week8 分库专项；仅 pdf KB；后勤手册"
+  },
+  {
+    "id": "kb-tabular-xy003",
+    "question": "工号 XY003 是谁？分机多少？",
+    "must_contain": ["周凯", "8002"],
+    "expected_sources": ["员工通讯录-摘录.csv"],
+    "expect_refuse": false,
+    "kb": "tabular",
+    "notes": "Week8 分库专项；仅 tabular KB；与 csv-xy003 同题对照"
+  },
+  {
+    "id": "kb-policies-leave",
+    "question": "年假有多少天？怎么折现？",
+    "must_contain": ["5 天", "10 天", "15 天", "平均工资"],
+    "expected_sources": ["02-请假与考勤制度.md"],
+    "expect_refuse": false,
+    "kb": "policies",
+    "notes": "Week8 分库专项；仅 policies KB；与 leave-annual 同题对照"
   }
 ]

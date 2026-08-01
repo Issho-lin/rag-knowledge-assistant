@@ -114,7 +114,9 @@
 新 tool + 路由验收   新 tool + 路由验收         CRAG/Self-RAG 按库可配
 ```
 
-**当前进度（2026-07-28）**：第 1–2 周已完成；第 3 周混合检索 + 重排已完成；**下一周动作 = 第 4 周**（不要先做工具路由）。
+**当前进度（2026-08-02）**：第 1–8 周已完成；**下一动作 = 第 9 周 Agent 工具路由**。  
+**一张表看清全局**：[`docs/learning-roadmap.md`](docs/learning-roadmap.md)（含每周生产认知、当前指针、DoD）。  
+**Demo vs 生产**：[`docs/production-gap.md`](docs/production-gap.md)（主动标出 Chroma、逻辑分库、BM25 形态等易漏讲项）。
 
 **后期总原则（2026-07-28 订正）**：
 - **能力目标**：掌握「分库 RAG + Agent 工具路由」——不是只调单个 pipeline。
@@ -127,7 +129,9 @@
 - 每场景要求：专项 golden + before/after；新 KB 上线时同时验收 **路由是否选对工具**。
 
 **贯穿全程**：
-- `learning-log.md`：决策与进展
+- `docs/learning-roadmap.md`：**当前指针 + 12 周全景 + 每周生产认知**（迷路先看）
+- `learning-log.md`：决策与进展；**每周收尾必填「生产认知」3 条**
+- `docs/production-gap.md`：demo 简化 vs 生产默认 vs 升级触发
 - `rag-pitfalls.md`：**只追加真实遇到的问题**（无则不写）
 
 ---
@@ -330,12 +334,12 @@
 **目标**：落实「**一种语料 / 一个领域 = 一个 KB = 一套策略**」；为第 9 周挂工具打好注册表。
 
 **必做**：
-- [ ] KB Registry：每个 KB 有 `id`、语料根目录、`profile`、（预留）`tool_name`/`description`
-- [ ] `COMMON_PROFILE` + 至少 **3 个分库 Profile**（例：制度文档、通讯录/CSV、PDF 手册——策略明显不同）
-- [ ] 物理或逻辑分库（多 collection 或统一库 + `kb` 强过滤）；**禁止**后期仍只有一个不可区分的大锅饭索引
-- [ ] **补 PDF 语料包** → 独立 KB → 专属解析/分块 Profile
-- [ ] 分块对照（标题切 vs 固定窗口）记在对应 KB 的决策里
-- [ ] 验收：给定 `kb_id` 检索时，只命中该库语料；各库题用对本库 Profile
+- [x] KB Registry：每个 KB 有 `id`、语料根目录、`profile`、（预留）`tool_name`/`description`
+- [x] `COMMON_PROFILE` + 至少 **3 个分库 Profile**（例：制度文档、通讯录/CSV、PDF 手册——策略明显不同）
+- [x] 物理或逻辑分库（**本项目采用逻辑分库**：统一库 + `kb` 强过滤 + 召回下推；物理分库见 `production-gap` §2.3.1 P2-5）
+- [x] **补 PDF 语料包** → 独立 KB → 专属解析/分块 Profile
+- [x] 分块对照（标题切 vs 固定窗口）记在对应 KB 的决策里（`kb/profiles.py` + `design-choices.md`）
+- [x] 验收：给定 `kb_id` 检索时，只命中该库语料；各库题用对本库 Profile（eval 34/34，`recall@4` 31/31）
 
 **非目标**：本周 Agent 自动选库可后置到第 9 周；本周先保证 **手动/API 指定 KB 时策略正确**。
 
@@ -419,7 +423,8 @@
 □ 本周链路哪一环变了？
 □ 有没有 before/after（数字或具体问答案例）？
 □ 本周是否遇到异常/失败/回退？有 → 是否已写入 rag-pitfalls.md？
-□ 没有新坑也没关系：是否在推进流程，而不是停着「找坑」？
+□ learning-log 是否填了「本周生产认知」3 条？（Demo / 生产 / 升级触发）
+□ 对照 docs/learning-roadmap.md「当前指针」——下周是否只开一条线？
 □ 关掉 AI 助手，我还能讲清本周决策吗？
 ```
 
@@ -482,10 +487,10 @@
 
 ## 11. 当前立刻做的事（按进度）
 
-1. **只做第 4 周**：扩 golden ≈30；加 `recall@k`；一键打出 vector / hybrid / hybrid+rerank 对照  
-2. 然后按原节奏做第 5 周（产品形态 + query 改写）、第 6 周（复盘）  
-3. **第 7–12 周先当路线图看，不提前动手**；等你确认主线已掌握再开  
-4. 开后期时仍保持「一周一主题」，与前三周同节奏
+1. **第 8 周收尾**：见 [`docs/learning-roadmap.md`](docs/learning-roadmap.md) §第 8 周收尾清单  
+2. **然后第 9 周**：Agent 工具路由（不要并行 P2 换库/物理分库）  
+3. 每周日更新 `learning-roadmap` 当前指针 + `learning-log` 生产认知  
+4. 遇选型问题先查 `production-gap`，不要等踩坑才补文档
 
 ---
 

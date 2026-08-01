@@ -15,13 +15,18 @@ log = get_logger(__name__)
 
 def expand_parent_context(chunks: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """将子块 text 替换为 parent_text（去重）；无 parent 则原样保留。"""
+
+    # 如果候选结果为空，则返回空列表
     if not chunks:
         return []
 
+    # 初始化一个空集合，用于存储已经扩展过的父文档
     seen_parent: set[str] = set()
+    # 初始化一个空列表，用于存储扩展后的结果
     out: list[dict[str, Any]] = []
 
     for chunk in chunks:
+        # 获取父文档文本
         parent = str(chunk.get("parent_text") or "").strip()
         if not parent or parent == chunk.get("text", "").strip():
             out.append(chunk)

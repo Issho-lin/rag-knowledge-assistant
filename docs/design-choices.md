@@ -104,18 +104,31 @@
 
 ## 8. 检索增强：过滤 + 子查询分解 + 父文档扩展
 
-**方案**：三项能力做成可插拔模块（`RetrievalOptions`），默认全关，与 Week 6 baseline 一致。
+**方案**：子查询分解 / 父文档扩展做成可插拔模块；**低分过滤与拒答共用 `REFUSE_MIN_RERANK_SCORE`**。
 
 | 能力 | 实现 | 日后归属 |
 |------|------|----------|
-| **过滤** | 重排后按 `RETRIEVAL_MIN_SCORE` 丢低分 chunk；`metadata_filter` 按 domain/kind/corpus 预演分库 | COMMON_PROFILE（阈值各 KB 可覆盖） |
-| **子查询分解** | cheap LLM 拆复合问句 → 多路检索 → RRF 合并 | COMMON_PROFILE（通讯录等单主题 KB 可关） |
-| **父文档扩展** | 切块时存 `parent_text`；命中子块时扩展为整节 | COMMON_PROFILE（短块 KB 可关） |
+| **低分过滤 + 拒答** | rerank 后**全部候选**低于阈值则丢弃；滤空 → 拒答 | COMMON_PROFILE |
+| **元数据过滤（`kb` 等）** | Chroma `where` + BM25 子集在**召回阶段**下推；`filter_chunks` 二次校验 | `--kb` / Profile |
+| **子查询分解** | cheap LLM 拆复合问句 → 多路检索 → RRF 合并 | COMMON_PROFILE |
+| **父文档扩展** | 切块时存 `parent_text`；命中子块时扩展为整节 | COMMON_PROFILE |
 
 | | |
 |--|--|
-| **为什么** | 第 8 周要拆多 KB + Profile，需先把「可配置检索层」做出来并在单库验证 |
-| **好处** | 开关独立、eval 可五路对照；入库元数据（domain/corpus/parent）为分库过滤铺路 |
-| **解决什么** | 复合问只检一次漏半边；子块上下文不足；候选里混低相关噪音 |
+| **为什么合并阈值** | 原方案「top-1 拒答 + 尾巴低分仍喂 LLM」有洞；统一阈值更简单，一个旋钮 |
+| **好处** | 语义一致；去掉 `RETRIEVAL_MIN_SCORE`；滤空即拒答，不重复看 top-1 |
+| **未 rerank 时** | 仍用 `REFUSE_MIN_VECTOR_SCORE` 只看 top-1（RRF 分不可比） |
 
 **验收**：`uv run python tests/eval/compare.py --suite enhanced`；父文档扩展需先 `--ingest --reset`。
+
+---
+
+## 9. 与业界落地的差距（教学简化 vs 生产默认）
+
+练习仓库 deliberately 采用可跑通的最小实现（如 BM25 全库打分、Chroma 本地单库、pypdf 直抽）。**不等于**生产最佳实践。
+
+| | |
+|--|--|
+| **为什么单独成文** | 学本项目既要会改代码，也要知道「没实现的那一半」叫什么、何时该上 |
+| **写什么** | 分模块：我们现在 / 业界常见 / 何时升级；含 **易漏讲清单**、**逻辑 vs 物理分库**（§2.3.1）、**Chroma vs 生产向量库**（§2.3.2）、P0–P2 路线图 |
+| **去哪看** | [`docs/production-gap.md`](./production-gap.md) |

@@ -58,6 +58,8 @@ def chunk_by_heading_info(doc: Document, max_chars: int = 1200) -> list[ChunkInf
     """按标题切分；过长节再按段落打包，保留父节全文。
 
     父文档检索：检索命中子块时可扩展为 parent_text。
+
+    没有触发段落打包的，父文本与子文本相同
     """
     text = doc.text.strip()
     if not text:
@@ -94,6 +96,29 @@ def chunk_by_heading_info(doc: Document, max_chars: int = 1200) -> list[ChunkInf
 
     doc.chunks = [c.text for c in infos]
     return infos
+
+
+def chunk_fixed_window(doc: Document, max_chars: int = 800) -> list[ChunkInfo]:
+    """固定窗口切块（PDF 等无标题结构语料）。"""
+    text = doc.text.strip()
+    if not text:
+        doc.chunks = []
+        return []
+
+    pieces = _pack_paragraphs(text, max_chars) if len(text) > max_chars else [text]
+    infos = [
+        ChunkInfo(text=piece, parent_text=piece, chunk_index=i)
+        for i, piece in enumerate(pieces)
+    ]
+    doc.chunks = [c.text for c in infos]
+    return infos
+
+
+def chunk_document(doc: Document, profile_max_chars: int, strategy: str) -> list[ChunkInfo]:
+    """按 Profile 选择切块策略。"""
+    if strategy == "fixed_window":
+        return chunk_fixed_window(doc, max_chars=profile_max_chars)
+    return chunk_by_heading_info(doc, max_chars=profile_max_chars)
 
 
 def chunk_by_heading(doc: Document, max_chars: int = 1200) -> list[str]:

@@ -4,6 +4,10 @@
 
 ## 端到端流程
 
+> 入库阶段详细流程（语料发现、KB 路由、切块、双索引写入）见 [ingest-pipeline.md](./ingest-pipeline.md)。  
+> 问答阶段详细流程（含子查询分解、低分过滤、父文档扩展等）见 [query-pipeline.md](./query-pipeline.md)。  
+> Chunk 在磁盘上的存储格式与检索时的 dict 结构见 [chunk-data-model.md](./chunk-data-model.md)。
+
 ```mermaid
 flowchart TB
     subgraph ingest["入库（离线）"]
@@ -90,3 +94,8 @@ rag-query
 - `RERANK_ENABLED=true` — 默认开重排
 - `REFUSE_MIN_RERANK_SCORE=0.15` — 重排 top-1 低于此值直接拒答
 - `CHAT_MODEL_STRONG` / `CHAT_MODEL_CHEAP` — 生成 / 改写分级
+
+## 相关文档
+
+- [学习路线图](./learning-roadmap.md)
+- [与业界落地差距及后期改造计划](./production-gap.md)

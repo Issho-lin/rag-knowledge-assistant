@@ -62,9 +62,21 @@ def pre_llm_refusal(
     *,
     use_rerank: bool,
 ) -> RefusalReason | None:
-    """生成前是否应直接拒答。"""
+    """生成前是否应直接拒答。
+
+    rerank 路径下分数过滤已在 retrieve 阶段完成（滤空即 chunks=[]）；
+    此处不再重复看 top-1，仅处理空列表。未 rerank 时仍用向量分门槛。
+    """
+    # 如果检索结果为空，则返回 NO_CHUNKS
     if not chunks:
         return RefusalReason.NO_CHUNKS
+    # 如果启用重排，则不拒答
+    if use_rerank:
+        # 不拒答，返回 None
+        return None
+    # 如果没有启用重排，则判断是否需要拒答
+    # 如果检索结果分数过低，则拒答
     if should_refuse_low_confidence(chunks, use_rerank=use_rerank):
+        # 拒答，返回 LOW_CONFIDENCE
         return RefusalReason.LOW_CONFIDENCE
     return None

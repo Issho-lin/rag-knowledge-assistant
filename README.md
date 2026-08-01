@@ -3,8 +3,10 @@
 公司内部文档风的 RAG 练习项目：虚构「星云科技」内部知识助手（中文制度 / FAQ / SOP）。
 
 > 学习计划见 [`ai-app-engineer-2month-plan.md`](ai-app-engineer-2month-plan.md)  
+> **学习路线图（当前进度 + 12 周全景）**见 [`docs/learning-roadmap.md`](docs/learning-roadmap.md)  
 > 从零复现步骤见 [`docs/build-guide.md`](docs/build-guide.md)  
 > 方案为何这样选见 [`docs/design-choices.md`](docs/design-choices.md)  
+> **与业界落地差距及后期改造计划**见 [`docs/production-gap.md`](docs/production-gap.md)  
 > **系统架构**见 [`docs/architecture.md`](docs/architecture.md)  
 > **短 Demo 脚本**见 [`docs/demo.md`](docs/demo.md)  
 > **面试复习 / 模拟对话**见 [`docs/interview-prep.md`](docs/interview-prep.md)
@@ -13,20 +15,21 @@
 
 员工用自然语言问内部问题（年假、报销、权限、发布窗口等）；系统从内部语料 **混合检索 + 重排** 后作答，带引用来源；库外或低置信度问题 **统一拒答**；支持 **多轮追问 + query 改写** 与 **Gradio 界面**。
 
-## 当前能力（第 6 周主线）
+## 当前能力（第 8 周 · 逻辑分库）
 
 | 能力 | 说明 |
 |------|------|
-| 语料 | 中文 MD / HTML / CSV，`data/corpus/internal/` |
-| 入库 | 按标题分块 → Chroma + BM25（`--ingest --reset`） |
-| 检索 | 向量 + BM25 → RRF → bge-reranker 重排（默认开启） |
-| 生成 | 强模型 + `[N]` 引用 + 程序追加来源块 |
-| 拒答 | 低 rerank 分 / 无 chunk → 不调 LLM；eval 与产品共用 `is_refusal()` |
-| 多轮 | 有历史时 cheap 模型改写检索问句（`--chat` / Gradio） |
-| 可观测 | Langfuse：`rag-query` → `query-rewrite` / `retrieve` / `generate` |
-| 评测 | 30 题 golden；`recall@4`；三路对照 `tests/eval/compare.py` |
+| 语料 | `internal/`（MD/HTML/CSV）+ `kb_pdf/`（PDF 手册） |
+| 多库 | KB Registry（policies / tabular / pdf）；**逻辑分库** + `--kb` |
+| 入库 | 按 Profile 分块 → Chroma + BM25（`--ingest --reset`） |
+| 检索 | hybrid + RRF + rerank；`--kb` 时 metadata **召回阶段下推** |
+| 生成 | 强模型 + `[N]` 引用 + 拒答 + 多轮改写 |
+| 界面 | CLI `--chat` / Gradio |
+| 评测 | golden **34** 题（含 4 道分库专项）；`recall@4`；`score_report` 标定阈值 |
 
-**Eval 基线（hybrid + rerank，2026-07-30）**：pass **30/30**，recall@4 **27/27**（3 道库外拒答题不计 recall）。
+**Eval 基线（hybrid + rerank，主线 30 题）**：pass **30/30**，recall@4 **27/27**。
+
+> Demo vs 生产差距见 [`docs/production-gap.md`](docs/production-gap.md)（Chroma、逻辑分库、BM25 形态等）。
 
 ## 布局
 

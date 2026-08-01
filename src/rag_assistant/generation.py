@@ -153,7 +153,10 @@ def produce_answer(
     tier: str = "strong",
 ) -> tuple[str, bool, RefusalReason | None]:
     """生成答案并应用拒答策略（eval 与 query 共用）。"""
+    # 调用拒答策略，判断是否需要拒答
+    # 拒答策略返回拒答原因
     reason = pre_llm_refusal(chunks, use_rerank=use_rerank)
+    # 如果拒答原因不为空，则记录拒答过程
     if reason is not None:
         log.info(
             "refuse.pre_llm",

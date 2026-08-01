@@ -30,6 +30,13 @@ def test_pre_llm_refusal_empty_chunks():
     assert pre_llm_refusal([], use_rerank=True) == RefusalReason.NO_CHUNKS
 
 
-def test_pre_llm_refusal_low_confidence():
-    chunks = [{"source": "a.md", "text": "x", "score": 0.05}]
-    assert pre_llm_refusal(chunks, use_rerank=True) == RefusalReason.LOW_CONFIDENCE
+def test_pre_llm_refusal_low_confidence_vector_only():
+    """未 rerank 时仍按向量余弦分门槛拒答；rerank 路径在 retrieve 阶段已滤分。"""
+    chunks = [{"source": "a.md", "text": "x", "score": 0.30}]
+    assert pre_llm_refusal(chunks, use_rerank=False) == RefusalReason.LOW_CONFIDENCE
+
+
+def test_pre_llm_refusal_rerank_skips_top1_gate():
+    """rerank 后低分应在 retrieve 滤掉；若仍有 chunk 则直接生成。"""
+    chunks = [{"source": "a.md", "text": "x", "score": 0.20}]
+    assert pre_llm_refusal(chunks, use_rerank=True) is None

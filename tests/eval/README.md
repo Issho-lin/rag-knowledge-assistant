@@ -6,6 +6,7 @@
 ```
 data/eval/golden.json          考卷（题 + 断言，人维护）
 tests/eval/run.py              跑一轮评测，写 results
+tests/eval/score_report.py         golden 分数表（标定拒答阈值）
 tests/eval/compare.py              多组对照（--suite retrieval | enhanced）
 tests/eval/scoring.py          纯打分逻辑（无 LLM）
 data/eval/results/*.json       成绩单（程序生成）

@@ -14,6 +14,7 @@ from langchain_openai import OpenAIEmbeddings
 from ..config import get_settings
 from ..exceptions import NonRetryableLLMError, RetryableLLMError
 from ..logging import get_logger
+from .filters import chroma_where
 from .metadata import chunk_from_hit
 
 log = get_logger(__name__)
@@ -24,10 +25,15 @@ _RETRYABLE_STATUS = {408, 409, 429, 500, 502, 503, 504}
 
 class VectorStore:
     def __init__(self, chroma_path: Path | None = None) -> None:
+        # 获取配置
         s = get_settings()
+        # 获取向量库路径
         path = chroma_path if chroma_path is not None else s.chroma_path
+        # 创建向量库路径
         path.mkdir(parents=True, exist_ok=True)
+        # 初始化chromadb客户端
         self._client = chromadb.PersistentClient(path=str(path))
+        # 初始化OpenAIEmbeddings
         self._embed = OpenAIEmbeddings(
             model=s.embedding_model,
             api_key=s.openai_api_key,
@@ -36,12 +42,14 @@ class VectorStore:
             # 国内 MaaS / DashScope 兼容接口需要直接传字符串，不能走 tiktoken 预处理
             check_embedding_ctx_length=False,
         )
+        # 初始化chroma集合
         self._coll = self._client.get_or_create_collection(
             name=_COLLECTION, metadata={"hnsw:space": "cosine"}
         )
 
     def _embed_texts(self, texts: list[str]) -> list[list[float]]:
         try:
+            # 对文本进行embedding
             return self._embed.embed_documents(texts)
         except Exception as exc:
             status = getattr(exc, "status_code", None) or getattr(
@@ -64,53 +72,91 @@ class VectorStore:
 
         国内部分 embedding 网关限制单批 ≤20，故按 batch_size 分批。
         """
+        # 如果chunk为空，则返回0
         if not chunks:
             return 0
+        # 如果ids为空，则生成ids
         if ids is None:
+            # 生成ids-格式为c{i}_{abs(hash(s)) % 10**10}
             ids = [f"c{i}_{abs(hash(s)) % 10**10}" for i, s in enumerate(chunks)]
+        # 如果ids/chunks/sources长度不一致，则抛出异常
         if not (len(ids) == len(chunks) == len(sources)):
             raise ValueError("ids/chunks/sources 长度必须一致")
+        # 如果metadatas长度不与chunks一致，则抛出异常
         if metadatas is not None and len(metadatas) != len(chunks):
             raise ValueError("metadatas 长度必须与 chunks 一致")
 
         total = 0
+        # 遍历chunks，按batch_size分批
         for start in range(0, len(chunks), batch_size):
             end = start + batch_size
             batch_ids = ids[start:end]
             batch_chunks = chunks[start:end]
             batch_sources = sources[start:end]
+            # 如果metadatas为空，则生成metadatas
             batch_meta = (
                 metadatas[start:end]
                 if metadatas is not None
                 else [{"source": src} for src in batch_sources]
             )
+            # 对chunk进行embedding
             embeddings = self._embed_texts(batch_chunks)
+            # 将chunk插入向量库
             self._coll.upsert(
                 ids=batch_ids,
                 documents=batch_chunks,
                 embeddings=embeddings,
                 metadatas=batch_meta,
             )
+            # 更新添加了多少个chunk
             total += len(batch_chunks)
         log.info("vector.add", count=total, batch_size=batch_size)
         return total
 
-    def query(self, text: str, k: int = 4) -> list[dict[str, Any]]:
-        """返回 top-k 片段：[{id, text, source, score}, ...]。"""
-        n = min(k, max(self.count(), 1))
+    def query(
+        self,
+        text: str,
+        k: int = 4,
+        *,
+        metadata_filter: dict[str, str] | None = None,
+    ) -> list[dict[str, Any]]:
+        """返回 top-k 片段：[{id, text, source, score}, ...]。
+
+        metadata_filter 通过 Chroma `where` 在召回阶段限定子集（如 `kb=policies`）。
+        """
+        where = chroma_where(metadata_filter) if metadata_filter else None
+        if self.count() == 0:
+            return []
+        n = k
         qvec = self._embed_texts([text])[0]
-        res = self._coll.query(query_embeddings=[qvec], n_results=n)
+        query_kwargs: dict[str, Any] = {
+            "query_embeddings": [qvec],
+            "n_results": n,
+        }
+        if where is not None:
+            query_kwargs["where"] = where
+        res = self._coll.query(**query_kwargs)
+        # 初始化结果列表
         out: list[dict[str, Any]] = []
+        # 获取查询结果的ids
         ids = res.get("ids", [[]])[0]
+        # 获取查询结果的chunks
         docs = res.get("documents", [[]])[0]
+        # 获取查询结果的metadatas
         metas = res.get("metadatas", [[]])[0]
+        # 获取查询结果的distances
         dists = res.get("distances", [[]])[0]
         for doc_id, doc, meta, dist in zip(ids, docs, metas, dists):
+            # 将查询结果转换为chunk
             out.append(chunk_from_hit(meta or {}, text=doc, doc_id=doc_id, score=1.0 - dist))
+        # 返回查询结果
         return out
 
     def count(self) -> int:
+        """获取向量库中chunk的数量。"""
         try:
+            # 获取向量库中chunk的数量
             return self._coll.count()
         except Exception:
+            # 如果获取失败，则返回0
             return 0

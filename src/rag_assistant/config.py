@@ -39,15 +39,13 @@ class Settings(BaseSettings):
     rerank_model: str = Field("BAAI/bge-reranker-base", alias="RERANK_MODEL")
     rerank_enabled: bool = Field(True, alias="RERANK_ENABLED")
 
-    # ---- 拒答（Week 5）----
-    # 重排启用时：cross-encoder top-1 低于此值则直接拒答（不调 LLM）
+    # ---- 拒答 / 检索置信度 ----
+    # 启用 rerank 时：所有候选 chunk 低于此值一律丢弃；滤空则拒答（见 retrieval/engine.py）
     refuse_min_rerank_score: float = Field(0.15, alias="REFUSE_MIN_RERANK_SCORE")
-    # 仅向量 / 非 RRF 分数时：余弦相似度 top-1 低于此值则拒答
+    # 仅向量、未 rerank 时：top-1 低于此值则拒答
     refuse_min_vector_score: float = Field(0.35, alias="REFUSE_MIN_VECTOR_SCORE")
 
-    # ---- 检索增强（过滤 / 子查询分解 / 父文档扩展）----
-    retrieval_filter_enabled: bool = Field(False, alias="RETRIEVAL_FILTER_ENABLED")
-    retrieval_min_score: float = Field(0.08, alias="RETRIEVAL_MIN_SCORE")
+    # ---- 检索增强（子查询分解 / 父文档扩展）----
     query_decompose_enabled: bool = Field(False, alias="QUERY_DECOMPOSE_ENABLED")
     parent_expand_enabled: bool = Field(False, alias="PARENT_EXPAND_ENABLED")
 
