@@ -23,7 +23,7 @@ class RetrievalOptions:
 
     @classmethod
     def from_settings(cls) -> "RetrievalOptions":
-        from ..config import get_settings
+        from ..core.config import get_settings
 
         s = get_settings()
         return cls(

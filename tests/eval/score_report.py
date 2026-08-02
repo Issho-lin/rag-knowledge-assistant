@@ -17,8 +17,8 @@ _ROOT = _EVAL_DIR.parents[1]
 if str(_EVAL_DIR) not in sys.path:
     sys.path.insert(0, str(_EVAL_DIR))
 
-from rag_assistant.config import get_settings
-from rag_assistant.pipeline import retrieve_chunks
+from rag_assistant.core.config import get_settings
+from rag_assistant.query.retrieve import retrieve_chunks
 
 _GOLDEN = _ROOT / "data/eval/golden.json"
 _OUT = _ROOT / "data/eval/results/score_report_latest.json"

@@ -27,7 +27,7 @@ from pathlib import Path
 
 from langchain_community.document_loaders import BSHTMLLoader, CSVLoader, TextLoader
 
-from ..logging import get_logger
+from ..core.logging import get_logger
 from .loaders import Document, _clean_markdown
 
 log = get_logger(__name__)

@@ -10,15 +10,19 @@
 
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 from typing import Any
 
-from ..config import get_settings
-from ..logging import get_logger
+from ..core.config import get_settings
+from ..core.logging import get_logger
 
 log = get_logger(__name__)
 
 _model = None
+# ReAct 可能并行调多个 KB 工具；MPS/CrossEncoder 非线程安全，需串行化加载与推理。
+# 使用 RLock：rerank() 持锁时 _get_model() 可重入，避免死锁。
+_model_lock = threading.RLock()
 
 
 def _resolve_model_path(name: str) -> str:
@@ -43,14 +47,17 @@ def _resolve_model_path(name: str) -> str:
 
 def _get_model():
     global _model
-    if _model is None:
-        from sentence_transformers import CrossEncoder
+    if _model is not None:
+        return _model
+    with _model_lock:
+        if _model is None:
+            from sentence_transformers import CrossEncoder
 
-        name = get_settings().rerank_model
-        resolved = _resolve_model_path(name)
-        log.info("rerank.loading", model=name, resolved=resolved)
-        _model = CrossEncoder(resolved)
-        log.info("rerank.loaded", model=resolved)
+            name = get_settings().rerank_model
+            resolved = _resolve_model_path(name)
+            log.info("rerank.loading", model=name, resolved=resolved)
+            _model = CrossEncoder(resolved)
+            log.info("rerank.loaded", model=resolved)
     return _model
 
 
@@ -62,15 +69,12 @@ def rerank(
 ) -> list[dict[str, Any]]:
     """对 chunks 按 (query, text) 相关性重排；top_k 默认保留全部排序结果。"""
 
-    # 如果候选结果为空，则返回空列表
     if not chunks:
         return []
-    # 初始化重排模型
-    model = _get_model()
-    # 初始化重排对（问题，候选结果）
     pairs = [(query, c["text"]) for c in chunks]
-    # 对每个候选结果进行问题-结果相关性评分
-    scores = model.predict(pairs)
+    with _model_lock:
+        model = _get_model()
+        scores = model.predict(pairs)
     # 根据相关性评分排序
     ranked = sorted(
         zip(chunks, scores),

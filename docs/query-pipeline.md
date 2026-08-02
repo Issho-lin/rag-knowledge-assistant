@@ -1,77 +1,121 @@
 # RAG 问答流水线
 
-> 对应代码：`pipeline.query()` → `retrieve_with_options()` → `produce_answer()`  
+> 共享检索：`query/retrieve.py` → `retrieval/engine.retrieve_with_options()`  
 > 默认配置：**hybrid + rerank**
 
-## 端到端流程图
+问答有 **三条入口**（CLI 标志不同），检索增强在三条路径上 **共用同一套 engine**；差别在 **谁选库、谁写最终答案**。
+
+## 三条路径一览
+
+| 路径 | 入口函数 | 检索 | 生成答案 |
+|------|----------|------|----------|
+| 直连 | `modes/direct.query()` | `retrieve_chunks(kb_id=…)` 全库或 `--kb` | `produce_answer` |
+| Agent 路由 | `modes/agent_route.query_agent()` | 路由后 `run_kb_retrieve`（单库） | `produce_answer` |
+| ReAct | `modes/agent_react.query_agent_react()` | 工具内 `run_kb_retrieve`（可多库） | ReAct LLM |
+
+```mermaid
+flowchart LR
+    Q[用户问题] --> RW[rewrite_for_retrieval]
+    RW --> A{模式}
+    A -->|query| D[retrieve_chunks]
+    A -->|agent| R[select_tool_names] --> D1[run_kb_retrieve 单库]
+    A -->|react| X[create_agent 循环] --> T[工具 run_kb_retrieve]
+    D --> PA[produce_answer]
+    D1 --> PA
+    T --> OBS[片段 Observation]
+    OBS --> X
+    X --> OUT[Agent 最终答复]
+    PA --> QR[QueryResult]
+    OUT --> QR
+```
+
+## 共享检索流水线
+
+以下步骤对 `--query`、`--agent`、ReAct **工具内部**均适用（经 `retrieve_chunks` → `retrieve_with_options`）：
 
 ```mermaid
 flowchart TD
-    A[多轮对话 chat 维护 history] --> B{有历史?}
-    B -->|是| C[查询改写 rewrite_for_retrieval]
-    B -->|否| D[原问句]
-    C --> E[retrieve_with_options]
-    D --> E
-    E --> F{子查询分解 decompose?}
-    F -->|是| G[1~3 个子问句]
+    E[retrieve_with_options] --> F{decompose? Profile/全局开关}
+    F -->|是| G[1~3 子问句 LLM]
     F -->|否| H[单问句]
-    G --> I[向量+BM25 召回<br/>带 metadata where / 子集]
+    G --> I[向量 + BM25 召回 metadata where]
     H --> I
-    I --> J[多子问句结果再 RRF 融合]
-    J --> K{启用 rerank?}
-    K -->|是| L[重排保留 candidate_k 条]
-    K -->|否| M[直接候选]
-    L --> N[低分过滤 + 元数据二次校验]
-    M --> O[仅元数据二次校验]
-    N --> P[截取 top_k]
+    I --> J[RRF 融合]
+    J --> K{rerank?}
+    K -->|是| L[Cross-encoder 重排]
+    K -->|否| M[候选]
+    L --> N[filter_chunks 低分 + 元数据]
+    M --> O[元数据校验]
+    N --> P[top_k]
     O --> P
-    P --> Q{父文档扩展?}
+    P --> Q{expand_parent?}
     Q -->|是| R[expand_parent_context]
-    Q -->|否| S[保持 chunk 原文]
-    R --> T[拒答判断: 重排+低分过滤后chunk为空？]
+    Q -->|否| S[chunk 原文]
+    R --> T[list dict chunks]
     S --> T
-    T -->|是| U[直接拒答]
-    T -->|否| V[LLM生成答案]
-    V --> W[返回答案 + 引用]
 ```
 
-## 步骤说明
+### 步骤与模块
 
 | 步骤 | 模块 | 说明 |
 |------|------|------|
-| 1. 多轮对话 | `pipeline.chat()` | 维护 `history`，供查询改写使用 |
-| 2. 查询改写 | `query_rewrite.py` | 仅在有历史时触发；补全指代/省略 |
-| 3. 子查询分解 | `query_decompose.py` | 可选（`QUERY_DECOMPOSE_ENABLED`）；复合问句拆成 1～3 个子问句 |
-| 4. 多路检索融合 | `hybrid.py` | 向量（Chroma `where`）+ BM25（子集打分）各取 `candidate_k`，RRF 融合 |
-| 5. 重排 | `rerank.py` | Cross-encoder 精排，保留 `candidate_k` 条 |
-| 6. 低分过滤 | `filters.py` | rerank 路径：`REFUSE_MIN_RERANK_SCORE`；`metadata_filter` 二次校验 |
-| 7. 截取 top_k | `engine.py` | `candidates[:k]` |
-| 8. 父文档扩展 | `context.py` | 可选（`PARENT_EXPAND_ENABLED` / KB Profile） |
-| 9. 拒答判断 | `refusal.py` | 生成前：空结果 / 未 rerank 低分；生成后：输出含「无法确认」 |
-| 10. LLM 生成 | `generation.py` | strong 模型，带 `[1][2]…` 引用 |
+| 多轮改写 | `query/preprocess/rewrite.py` | 有 `history` 时 cheap LLM 补全指代 |
+| 子查询分解 | `query/preprocess/decompose.py` | `QUERY_DECOMPOSE_ENABLED`；tabular/pdf Profile 强制关 |
+| 召回融合 | `retrieval/hybrid.py` 等 | hybrid 或 vector；`kb` 过滤在召回阶段下推 |
+| 重排 | `retrieval/rerank.py` | 默认 bge-reranker；并行 tool 时 `RLock` 串行 |
+| 低分过滤 | `retrieval/filters.py` | rerank 路径用 `REFUSE_MIN_RERANK_SCORE` |
+| 父文档扩展 | `retrieval/context.py` | policies Profile 默认开 |
+| 工具层拒答提示 | `kb/search.py` | `pre_llm_refusal` → Observation「未检索到相关片段」 |
 
-## 关键参数
+### 关键参数
 
-- **candidate_k** = `max(k * 3, 12)`（启用 rerank 时）；否则为 `k`
-- **默认 k** = 4（`--k` 可改）
-- **RRF 融合**：hybrid 内部（向量 + BM25）与子查询间各一层，均用 `rrf_fuse()`
-- **`--kb` / metadata_filter**：在 Chroma `where` 与 BM25 子集召回阶段下推，避免大库挤占 top-k 后再过滤
+- **candidate_k** = `max(k * 3, 12)`（启用 rerank 时）
+- **默认 k** = 4（`--k`）
+- **`--kb`**：仅 `--query`；等价于 metadata `kb=…`
 
-## 可选开关
+### 可选开关
 
-| 开关 | 默认值 | 作用 |
+| 开关 | 默认 | 作用 |
+|------|------|------|
+| `RERANK_ENABLED` | `true` | 重排 + 低分过滤 |
+| `QUERY_DECOMPOSE_ENABLED` | `false` | 单库内子查询分解 |
+| `PARENT_EXPAND_ENABLED` | `false` | 全局；policies Profile 仍开 expand_parent |
+
+## 生成与拒答（分路径）
+
+### `--query` / `--agent`：`produce_answer`
+
+| 阶段 | 模块 | 说明 |
+|------|------|------|
+| 生成前拒答 | `answer/refusal.pre_llm_refusal` | 无 chunk / 未 rerank 低置信度 |
+| LLM 生成 | `answer/generate.generate` | strong 模型，`[1][2]…` 引用 |
+| 生成后拒答 | `answer/refusal.is_refusal` | 输出含「无法确认」 |
+| 引用 | `answer/generate.build_citations` | 拼来源块 |
+
+### `--react`：Agent 写答案
+
+- 工具返回 **片段 Observation**（`format_chunks_observation`），不调用 `produce_answer`
+- 最终答复由 ReAct LLM 撰写；`query_agent_react` 用 `is_refusal` 标记拒答
+- 引用列表合并各次 tool 的 `chunks` + `build_citations`
+
+## ReAct 与 decompose 的分工
+
+| 能力 | 谁负责 | 适用 |
 |------|--------|------|
-| `RERANK_ENABLED` | `true` | 重排 + 检索阶段低分过滤 |
-| `QUERY_DECOMPOSE_ENABLED` | `false` | 子查询分解 |
-| `PARENT_EXPAND_ENABLED` | `false` | 父文档扩展（policies KB Profile 默认开） |
+| **跨库拆题 + 选库** | ReAct Agent（调不同 `search_*` 工具） | 复合问「报销 + 打印机」 |
+| **单库内拆句检索** | `decompose_for_retrieval` | `--query` / `--agent` / 工具内检索；默认关 |
 
-## 检索返回的 chunk 结构
+## 检索 chunk 结构
 
-`retrieve_with_options()` 返回 `list[dict]`，经 RRF、重排、过滤、父文档扩展后交给 `generation.py`。各阶段 `score` / `text` 如何变化，以及与 Chroma、BM25 存储的对应关系，见 [chunk-data-model.md](./chunk-data-model.md)。
+见 [chunk-data-model.md](./chunk-data-model.md)。
+
+## Eval 说明
+
+- **`tests/eval/run.py`**：固定走 `retrieve_chunks` + `produce_answer`（测检索与生成，**不是** ReAct 端到端）
+- **`tests/eval/run_routing.py`**：只测 `--agent` 的 `select_tool_names`
 
 ## 相关文档
 
-- [Chunk 数据模型](./chunk-data-model.md) — 存储结构 vs 检索返回结构
-- [入库流水线](./ingest-pipeline.md) — 语料加载、切块、向量库 + BM25
-- [系统架构](./architecture.md) — 模块职责与观测点
-- [关键方案说明](./design-choices.md) — 设计取舍
+- [系统架构](./architecture.md)
+- [入库流水线](./ingest-pipeline.md)
+- [关键方案说明](./design-choices.md)

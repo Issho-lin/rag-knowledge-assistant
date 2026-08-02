@@ -1,8 +1,4 @@
-"""基于 structlog 的结构化日志。
-
-为什么用结构化（JSON）日志：线上是按字段检索，不是用眼睛扫散文。
-`event="retrieve" latency_ms=42 hits=3` 可查询；一句自然语言不好查。
-"""
+"""基于 structlog 的结构化日志。"""
 
 from __future__ import annotations
 

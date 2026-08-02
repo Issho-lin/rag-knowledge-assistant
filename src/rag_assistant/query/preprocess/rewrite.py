@@ -1,13 +1,16 @@
-"""多轮 query 改写：结合历史把指代问句补全为可独立检索的完整问题。"""
+"""多轮 query 改写：ReAct 编排层在 ``run_react_agent`` 之前调用。
+
+无历史时跳过 LLM；有历史时把指代问句补全为可独立检索的 ``search_q``。
+"""
 
 from __future__ import annotations
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from .conversation import ChatTurn, format_history, trim_history
-from .llm import LLMClient
-from .logging import get_logger
-from .observability import get_langfuse
+from ...conversation import ChatTurn, format_history, trim_history
+from ...core.llm import LLMClient
+from ...core.logging import get_logger
+from ...core.observability import get_langfuse
 
 log = get_logger(__name__)
 
@@ -52,42 +55,31 @@ def rewrite_for_retrieval(
     *,
     tier: str = "cheap",
 ) -> str:
-    """无历史或空问题时原样返回；否则用 LLM 生成独立检索问句。"""
+    """无历史或空问题时原样返回；否则用 cheap LLM 生成独立检索问句。"""
     q = question.strip()
     if not q:
         return question
-    # 修剪历史记录，只保留最近若干条
     trimmed = trim_history(history)
-    # 如果修剪后历史记录为空，则直接返回原始问题
     if not trimmed:
-        return q
+        return q  # 单轮 ReAct：search_q == 用户原问
 
-    # 构造指引模型进行改写的 messages
     messages = build_rewrite_messages(q, trimmed)
-    # 获取 Langfuse 实例
     lf = get_langfuse()
 
-    # 如果 Langfuse 实例为空，则直接调用 LLM 进行改写
     if lf is None:
         rewritten = LLMClient().invoke(messages, tier=tier)
     else:
-        # 如果 Langfuse 实例不为空，则启动一个 Langfuse 观察，记录改写过程
         with lf.start_as_current_observation(
             name="query-rewrite",
             as_type="generation",
             input={"question": q, "history_turns": len(trimmed)},
         ) as obs:
-            # 调用 LLM 进行改写
             rewritten = LLMClient().invoke(messages, tier=tier)
             obs.update(output=rewritten)
 
-    # 对改写结果进行规范化处理
     out = _normalize_rewrite(rewritten)
-    # 如果规范化后的结果与原始问题不同，则记录改写过程
     if out != q:
         log.info("rewrite.done", original=q, rewritten=out)
-    # 如果规范化后的结果与原始问题相同，则记录改写过程
     else:
         log.info("rewrite.unchanged", query=q)
-    # 返回规范化后的结果
     return out

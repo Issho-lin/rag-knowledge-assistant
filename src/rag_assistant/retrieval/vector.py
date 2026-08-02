@@ -11,9 +11,9 @@ from typing import Any
 import chromadb
 from langchain_openai import OpenAIEmbeddings
 
-from ..config import get_settings
-from ..exceptions import NonRetryableLLMError, RetryableLLMError
-from ..logging import get_logger
+from ..core.config import get_settings
+from ..core.exceptions import NonRetryableLLMError, RetryableLLMError
+from ..core.logging import get_logger
 from .filters import chroma_where
 from .metadata import chunk_from_hit
 
@@ -124,6 +124,7 @@ class VectorStore:
 
         metadata_filter 通过 Chroma `where` 在召回阶段限定子集（如 `kb=policies`）。
         """
+        # 获取metadata_filter
         where = chroma_where(metadata_filter) if metadata_filter else None
         if self.count() == 0:
             return []

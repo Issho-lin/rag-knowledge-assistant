@@ -45,7 +45,7 @@ data/chroma/unified/bm25.pkl  ← BM25 关键词索引（pickle）
 
 | 字段 | 含义 |
 |------|------|
-| `id` | 稳定编号，`pipeline._chunk_id()` 生成 |
+| `id` | 稳定编号，`ingest/run._chunk_id()` 生成 |
 | `documents` | chunk 正文（检索与 embedding 的输入） |
 | `embeddings` | 正文向量；**仅 Chroma 有** |
 | `metadatas` | 标签字典，见下节 |
@@ -173,15 +173,16 @@ rerank 低分阈值丢弃；`metadata_filter` 在召回阶段已下推，此处�
 }
 ```
 
-### 6. 交给 LLM
+### 6. 交给上层
 
-`generation.py` 使用 top-k 个 chunk 的 `text` 拼 prompt；引用标注使用 `source`。
+- **`--query` / `--agent`**：`answer/generate.py` 的 `produce_answer` 用 top-k 的 `text` 拼 prompt；引用用 `source`
+- **`--react`**：片段格式化为工具 Observation；最终由 Agent 撰写答案，`build_citations` 合并各次 tool 的 chunks
 
 ---
 
 ## 存储 vs 检索对照
 
-| | 存储（Chroma / BM25） | 检索（pipeline chunk） |
+| | 存储（Chroma / BM25） | 检索（内存 chunk dict） |
 |--|----------------------|------------------------|
 | 标识 | `id` | `id` |
 | 正文 | `documents` / `docs` | `text` |
@@ -208,7 +209,7 @@ flowchart TB
         F --> G["rerank（改 score）"]
         G --> H["filter_chunks（低分 + 元数据校验）"]
         H --> I["expand_parent_context（可能改 text）"]
-        I --> J["generation.py"]
+        I --> J["produce_answer 或 ReAct Observation"]
     end
 
     B --> D

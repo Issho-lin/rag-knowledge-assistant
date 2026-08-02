@@ -189,7 +189,98 @@
 - 拒答/过滤统一：rerank 后按 `REFUSE_MIN_RERANK_SCORE` 滤全部候选，滤空即拒答（去掉 `RETRIEVAL_MIN_SCORE`）
 - **下一步**：第 8 周——KB Registry + 多 Profile 分库 + PDF KB
 
-## 2026-08-02 — 第 8 周收尾 ✅
+## 2026-08-02 — 第 9 周开工：Agent 工具路由（Step 1）
+
+### 今日完成
+- [x] `kb/tools.py`：`run_kb_search` + `build_kb_tools`（每 KB 一个 StructuredTool）
+- [x] `agent.py`：`select_tool_names`（cheap 模型 function calling 路由）
+- [x] `pipeline.query_agent` + CLI `--agent`（`--query` / `--chat`）
+- [x] Langfuse：`rag-agent-query` → `agent-route` span（记 `tool_name` / `kb_id`）
+- [x] `tests/eval/run_routing.py` + golden `expected_tool`（6 题路由专项）
+- [x] 单测：`tests/test_agent.py`（mock LLM）+ registry 反查
+
+### 本周生产认知（预习 → 已修正）
+
+> 见下方 **「架构决策：ReAct 为主路径」**；早期笔记里「`--agent` 才是产品路径」已作废。
+
+### 明日 / 后续 Step
+- [x] 本地跑 `uv run python tests/eval/run_routing.py`（routing **6/6**）
+- [x] ReAct 端到端 golden / 复合题手测归档
+- [x] `ui.py` 默认切 `query_agent_react`
+- [x] `--agent` vs `--react` 对照记入 learning-log（辅助理解，非产品路径）
+
+### 手测
+```bash
+uv run python -m rag_assistant.pipeline --react --query "工号 XY003 是谁？"
+uv run python -m rag_assistant.pipeline --react --query "XY003 的报销额度是多少？另外打印机卡纸怎么处理？"
+uv run python tests/eval/run_routing.py
+uv run python tests/eval/run.py          # 34/34
+uv run python tests/eval/run_react.py    # 6/7
+uv sync --extra ui && uv run python -m rag_assistant.ui --no-inbrowser
+```
+
+---
+
+## 2026-08-02 — 第 9 周收尾
+
+### DoD 勾选
+- [x] 工具层统一：`kb/search.py` 只检索；`--agent` / `--react` 共用 `run_kb_retrieve`
+- [x] ReAct 主路径：`query/modes/agent_react/` + CLI `--react` / `--chat --react`
+- [x] 路由辅助：`--agent` + `run_routing.py` **6/6**
+- [x] ReAct eval：`data/eval/react_golden.json`（7 题）+ `tests/eval/run_react.py` → **6/7**
+- [x] Gradio 切 ReAct；侧栏展示 `routed_tool`
+- [x] 手测：`run.py` **34/34**、routing **6/6**、复合题 ReAct 可跑完
+- [x] 单测 **45** passed（含 `score_react_tools`）
+
+### Eval / 数字
+| 套件 | 结果 |
+|------|------|
+| `run.py` | **34/34**，recall@4 **31/31** |
+| `run_routing.py` | **6/6** |
+| `run_react.py` | **6/7**（`react_20260802_163630.json`） |
+| `pytest` | **45** passed |
+
+**ReAct 唯一 FAIL**：`react-admin-faq`（会议室+打印机复合问）— `tools=T✓`、`recall=R✓`，但 Agent 打印机段落引用 PDF 未写 FAQ 里的 `Xingyun-Office`；属生成选题 + 断言偏严，非链路 bug。已知局限，不阻塞收尾。
+
+### `--agent` vs `--react` 对照（辅助理解）
+
+| 维度 | `--agent` | `--react`（主路径） |
+|------|-----------|---------------------|
+| 选库 | cheap LLM 一次选 **1** 个工具 | strong Agent 可 **多工具、多轮** |
+| 生成 | Python `produce_answer` | Agent 读 Observation 写答案 |
+| 复合跨库题 | 易只查一库后拒答 | `react-cross-kb` 双工具通过 |
+| 评测 | `run_routing.py` | `run_react.py` |
+| 成本/延迟 | 较低 | 较高（多轮 strong LLM + 多检索） |
+
+### 踩坑（本周新增）
+- ReAct 并行 tool + MPS rerank → segfault；`rerank.py` **RLock** 串行化（曾用 `Lock` 死锁）
+- Gradio 需 `uv sync --extra ui`，否则 `gradio` 无 `Blocks`；`ui.py` 已加友好报错
+- `react-admin-faq`：Agent 对「打印机」过度查 PDF，policies 侧 filter 后仅 1 chunk
+
+### 生产认知（第 9 周）
+1. **主路径**：CLI / Gradio 默认 **ReAct**；工具只返回片段，Agent 综合写答案。  
+2. **评测分层**：`run.py` 测 RAG 底座；`run_routing.py` 测单步路由；`run_react.py` 测 ReAct 端到端（题集小、允许偶发 FAIL）。  
+3. **不叠第三层路由**：不必再 LLM 判断 agent vs react。
+
+### 下一步
+- **第 10 周**：关系语料 + `query_relations` Tool 挂 Registry，由 ReAct 选用
+
+---
+
+## 2026-08-02 — 架构决策：ReAct 为主路径
+
+> **决策**：生产与学习统一以 **`--react`** 为用户入口；`--query` / `--agent` 仅作辅助——理解 RAG 底座（检索 + `produce_answer`）与单步路由选型，不作为并列产品模式。不必再叠「agent vs react」路由 LLM。
+
+| 路径 | 角色 |
+|------|------|
+| `--react` | 主流程：多库、复合题、Agent 调工具读片段写答案 |
+| `--query` + `tests/eval/run.py` | 辅助：固定检索→生成，测 recall / 拒答 |
+| `--agent` + `run_routing.py` | 辅助：cheap 路由评测，理解选库 |
+| `--query --kb` | 辅助：单库 Profile 调试 |
+
+**第 10–12 周**：新语料仍走「KB → Profile → Tool → **ReAct 选用**」；图检索 / 多模态 / CRAG 挂在 Tool+Profile 上。
+
+---
 
 ### 本周交付（DoD）
 - [x] `kb/` Registry + 三 Profile（policies / tabular / pdf）
@@ -214,4 +305,5 @@
 - 文档曾漏讲物理分库、Chroma 非生产默认——已补 `production-gap` + 路线图「生产认知必填」
 
 ### 下周唯一动作
-- **第 9 周**：KB → Agent Tool（function calling）；路由专项 golden；Langfuse 记 `tool_name`
+- ~~**第 9 周收尾**~~ ✅ 已完成（见上方「第 9 周收尾」）
+- **第 10 周**：关系 KB + `query_relations` 挂 Tool

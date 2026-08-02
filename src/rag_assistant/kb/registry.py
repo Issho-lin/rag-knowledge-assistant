@@ -1,4 +1,4 @@
-"""知识库注册表：id ↔ 语料 ↔ Profile ↔（预留）Agent 工具。"""
+"""知识库注册表：每个 KB 对应一个 ReAct 工具（tool_name + description 供 Agent 选型）。"""
 
 from __future__ import annotations
 
@@ -13,9 +13,9 @@ from .profiles import KBProfile, PDF_PROFILE, POLICIES_PROFILE, TABULAR_PROFILE
 class KnowledgeBase:
     id: str
     name: str
-    profile: KBProfile
-    tool_name: str
-    description: str
+    profile: KBProfile  # 检索/切块策略，经 retrieve_chunks 合并
+    tool_name: str  # LangChain StructuredTool.name，如 search_policies
+    description: str  # 写入工具 description，供 Agent 理解边界
     corpus_names: tuple[str, ...] = ()  # 空 = 由 resolve_kb_id 按文档类型路由
 
 
@@ -50,7 +50,10 @@ _REGISTRY: dict[str, KnowledgeBase] = {
         name="制度与流程文档",
         profile=POLICIES_PROFILE,
         tool_name="search_policies",
-        description="公司制度、FAQ、SOP、IT/安全/差旅/入职等内部文档。不适用：表格行数据、PDF 手册。",
+        description=(
+            "公司制度、FAQ、SOP、IT/安全/差旅/入职等在线 MD/HTML 文档。"
+            "不适用：表格行数据、PDF 手册、园区后勤/访客临停停车费率/办公设备操作（后两者在 PDF 手册）。"
+        ),
         corpus_names=("internal",),
     ),
     "tabular": KnowledgeBase(
@@ -66,7 +69,10 @@ _REGISTRY: dict[str, KnowledgeBase] = {
         name="PDF 手册",
         profile=PDF_PROFILE,
         tool_name="search_pdf_handbook",
-        description="仅 PDF 格式手册与扫描件转文本。不适用：在线 MD/HTML 制度。",
+        description=(
+            "PDF 手册：办公设备操作、园区后勤与设施（访客临停费率、停车场、餐厅、健身中心等）。"
+            "不适用：在线 MD/HTML 制度文档。"
+        ),
         corpus_names=("kb_pdf",),
     ),
 }
@@ -80,8 +86,17 @@ def get_kb(kb_id: str) -> KnowledgeBase:
     return _REGISTRY[kb_id]
 
 
+def get_kb_by_tool_name(tool_name: str) -> KnowledgeBase:
+    """根据 Agent 工具名反查 KB。"""
+    for kb in _REGISTRY.values():
+        if kb.tool_name == tool_name:
+            return kb
+    known = ", ".join(sorted(kb.tool_name for kb in _REGISTRY.values()))
+    raise KeyError(f"未知 tool_name={tool_name!r}，可选: {known}")
+
+
 def list_kbs() -> list[KnowledgeBase]:
-    """获取所有知识库配置。"""
+    """获取所有知识库配置；``build_kb_tools`` 据此生成 ReAct 工具列表。"""
     return list(_REGISTRY.values())
 
 

@@ -1,6 +1,7 @@
 # RAG 入库流水线
 
-> 对应代码：`pipeline.ingest()` → `load_all_documents()` → `chunk_document()` → `VectorStore.add()` + `BM25Store.rebuild()`  
+> 对应代码：`ingest/run.ingest()` → `load_all_documents()` → `chunk_document()` → `VectorStore.add()` + `BM25Store.rebuild()`  
+> CLI：`python -m rag_assistant.pipeline --ingest` → `cli` → `ingest()`  
 > 默认命令：`uv run python -m rag_assistant.pipeline --ingest --reset`
 
 ## 端到端流程图
@@ -38,12 +39,12 @@ flowchart TD
 
 | 步骤 | 模块 | 说明 |
 |------|------|------|
-| 1. 发现语料包 | `pipeline.discover_corpus_roots()` | 扫描 `CORPUS_DIR` 下子目录；含 `markdown/`、`html/`、`csv/` 或 `pdf/` 之一即视为合法包 |
+| 1. 发现语料包 | `ingest/run.discover_corpus_roots()` | 扫描 `CORPUS_DIR` 下子目录；含 `markdown/`、`html/`、`csv/` 或 `pdf/` 之一即视为合法包 |
 | 2. 加载文档 | `loaders.load_corpus()` | 各类型 loader 产出 `Document(text, source, metadata)`；`corpus` 字段记语料包名 |
 | 3. 打标签（KB 路由） | `kb/registry.resolve_kb_id()` | 给文档贴类型标签：`policies` / `tabular` / `pdf`（见下节） |
 | 4. 切块 | `chunking.chunk_document()` | 长文切成可检索的小段；策略由标签决定 |
 | 5. 贴条（元数据） | `metadata.build_chunk_metadata()` | 每个小段附上来源、类型、标签等，方便检索后过滤和引用 |
-| 6. 编号 | `pipeline._chunk_id()` | 给每段生成唯一 id，向量库和 BM25 用同一编号 |
+| 6. 编号 | `ingest/run._chunk_id()` | 给每段生成唯一 id，向量库和 BM25 用同一编号 |
 | 7. 向量入库 | `vector.VectorStore.add()` | 把每段转成向量，写入 Chroma |
 | 8. 关键词入库 | `bm25.BM25Store.rebuild()` | 同一批段落再建一份关键词索引（bm25.pkl） |
 

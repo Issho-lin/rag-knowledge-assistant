@@ -1,13 +1,13 @@
-"""检索编排：多路子查询、融合、重排、过滤、父文档扩展。"""
+"""检索编排：ReAct 工具经 retrieve_chunks → retrieve_with_options 进入此流水线。"""
 
 from __future__ import annotations
 
 from pathlib import Path
 from typing import Any, Callable
 
-from ..config import get_settings
-from ..logging import get_logger
-from ..query_decompose import decompose_for_retrieval
+from ..core.config import get_settings
+from ..core.logging import get_logger
+from ..query.preprocess.decompose import decompose_for_retrieval
 from .bm25 import BM25Store
 from .context import expand_parent_context
 from .filters import filter_chunks
@@ -52,11 +52,14 @@ def retrieve_with_options(
     chroma_path: Path,
     bm25_path: Path,
 ) -> list[dict[str, Any]]:
-    """统一检索入口：子查询分解 → 召回 → 重排 → 过滤 → 父文档扩展。"""
+    """统一检索入口：子查询分解 → 召回 → 重排 → 过滤 → 父文档扩展。
+
+    ReAct 每次工具调用都会走完整链路；metadata_filter 来自 KB Profile（限定单库）。
+    """
 
     # 获取检索选项
     opts = options or RetrievalOptions.from_settings()
-    # 计算候选结果数量, 如果启用重排，候选结果扩展到 k * 3，且保证至少12条, 否则为 k
+    # 重排前多召回候选，再 rerank 截断，提高 top-k 质量
     candidate_k = max(k * 3, 12) if do_rerank else k
 
     meta_filter = dict(opts.metadata_filter) if opts.metadata_filter else None

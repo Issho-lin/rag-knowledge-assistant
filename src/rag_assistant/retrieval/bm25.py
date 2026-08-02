@@ -13,7 +13,7 @@ from typing import Any
 
 from rank_bm25 import BM25Okapi
 
-from ..logging import get_logger
+from ..core.logging import get_logger
 from .filters import match_metadata
 from .metadata import chunk_from_hit
 

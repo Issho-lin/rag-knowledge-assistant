@@ -1,7 +1,4 @@
-"""Langfuse 可观测：可选启用，无密钥时静默跳过。
-
-Week 2：能在控制台看到一次问答的 retrieve chunks / generate 输入输出与耗时。
-"""
+"""Langfuse 可观测：可选启用，无密钥时静默跳过。"""
 
 from __future__ import annotations
 
@@ -17,7 +14,6 @@ _initialized = False
 
 
 def get_langfuse():
-    """返回已配置的 Langfuse 客户端；未配置密钥时返回 None。"""
     global _client, _initialized
     if _initialized:
         return _client

@@ -20,13 +20,15 @@
 
 ---
 
-## 当前指针（2026-08-02 更新）
+## 当前指针（2026-08-02 更新 · 第 9 周已收尾）
 
 | 项 | 状态 |
 |----|------|
-| **已完成** | 第 1–8 周（含分库 eval **34/34**、`recall@4` 31/31） |
-| **第 8 周 DoD** | ✅ 已全部达成 |
-| **下一周唯一动作** | **第 9 周**：KB → Agent Tool；function calling 路由；路由专项 golden |
+| **已完成** | 第 1–**9** 周：ReAct 主路径、工具只检索、`run_react.py` **6/7**、Gradio 切 ReAct、routing **6/6**、golden **34/34** |
+| **当前分支** | `week9/agent-tool-routing`（收尾后可 merge / 开 week10 分支） |
+| **主路径（产品/学习）** | CLI `--chat --react` + Gradio → `query_agent_react` |
+| **辅助路径** | `--query` + `run.py`；`--agent` + `run_routing.py` |
+| **下一步** | **第 10 周**：关系语料 + `query_relations` Tool → ReAct 选用 |
 | **不要提前做** | 物理分库、换 Qdrant、GraphRAG、多模态（见 P2 路线图） |
 
 ---
@@ -45,44 +47,48 @@
 | **6** | 复盘固化 | architecture、demo、pitfalls、口述 | 能脱稿讲链路；手册只记真实踩坑 | ✅ |
 | **7** | 检索增强 | filter、decompose、parent；enhanced 对照 | 增强项是 Profile 素材，默认关；生产按库开关 | ✅ |
 | **8** | 多 KB + Profile + PDF | Registry；逻辑分库；`--kb`；PDF 语料；分库 golden | **逻辑分库 ≠ 物理分库**（§2.3.1）；召回阶段下推 filter | ✅ |
-| **9** | Agent 工具路由 | 每 KB 一 Tool；routing eval；Langfuse 记 tool | 生产多库常「一工具一库」→ 背后常是**物理索引** | ⏳ |
+| **9** | Agent 工具路由 + ReAct | 每 KB 一 Tool（只检索）；**ReAct 为主路径**；`run_react.py` **6/7**；Gradio ReAct | 复合题用 ReAct；评测分层；工具内不 `produce_answer` | ✅ |
 | **10** | 关系 / Graph KB | 补关系语料；`query_relations`；路由题 | 文档 RAG 与图检索分工；HyDE 可选对照 | ⏳ |
 | **11** | 多模态 KB | 补图文语料；`search_visual`；路由题 | 图→描述再检索是常见折中；真多模态 embedding 更重 | ⏳ |
 | **12** | CRAG + 总复盘 | Profile 挂纠错层；KB×Profile×Tool 总表 | 纠错挂在库内而非另起系统；面试能讲扩展法 | ⏳ |
 
 ---
 
-## 第 8 周收尾清单（复制执行）
+## 第 9 周收尾清单
 
 ```bash
 uv run python -m rag_assistant.pipeline --ingest --reset
-uv run pytest tests/test_retrieval.py tests/test_kb_registry.py -q
-uv run python tests/eval/run.py          # 或先 --limit 34 看分库 4 题
-uv run python tests/eval/score_report.py # 阈值仍 OK 则不动 .env
+uv run pytest tests/ -q
+uv run python tests/eval/run.py
+uv run python tests/eval/run_routing.py
+uv run python tests/eval/run_react.py
+# 手测对比
+uv run python -m rag_assistant.pipeline --query "工号 XY003 是谁？"
+uv run python -m rag_assistant.pipeline --react --query "XY003 的报销额度是多少？另外打印机卡纸怎么处理？"
+uv sync --extra ui && uv run python -m rag_assistant.ui --no-inbrowser
 ```
 
-- [ ] 34 题 pass 率与分库 4 题 recall 可接受  
-- [ ] `learning-log` 填本周生产认知（见模板）  
-- [ ] README「当前能力」更新到第 8 周  
+- [x] golden 34/34、routing 6/6、react 6/7、单测全绿  
+- [x] `learning-log` / 本文档指针更新  
+- [x] `docs/architecture.md` 与代码一致  
 
 ---
 
-## 第 9 周预告（开工前读）
+## 第 9 周交付摘要（归档）
 
-| 必做 | 说明 |
+| 项 | 说明 |
 |------|------|
-| `kb/registry.py` 的 `tool_name` 接到 Agent | `search_policies` / `search_tabular` / `search_pdf_handbook` |
-| function calling 选工具 | 用户不选 `--kb`，由 Agent 选 |
-| 路由 golden | 单库题必须选对工具；错库对照 |
-| Langfuse | span 记 `tool_name`、`kb_id` |
+| `kb/search.py` | `run_kb_retrieve` + `build_kb_tools`（Observation 只含片段） |
+| `--agent` | `agent_route`：选型 → 单库检索 → `produce_answer` |
+| `--react` | `agent_react`：`create_agent` 循环调工具 → Agent 写答案 |
+| 评测 | `run_routing.py` 6/6；`run.py` 34/34；`run_react.py` **6/7** |
+| 踩坑 | ReAct 并行 tool + MPS rerank → `rerank.py` 使用 `RLock` |
 
-**第 9 周生产认知（预习）**：
+**生产认知**：
 
-1. **Demo**：`--kb` 是运维/调试参数。  
-2. **生产**：用户不问库名；**Agent 选工具** ≈ 选库 + 选 Profile。  
-3. **升级**：工具稳定后，工具背后可换**物理分库**而不改 Agent 接口。
-
----
+1. **主路径**：单对话框默认 **ReAct**；工具只检索，Agent 综合写答案。  
+2. **辅助**：`--query` / `run.py` 测检索底座；`--agent` / `run_routing.py` 理解路由，不作用户入口。  
+3. **升级**：工具名稳定后，背后可换物理分库而不改 Agent 接口。
 
 ## 每周收尾模板（粘贴到 `learning-log.md`）
 

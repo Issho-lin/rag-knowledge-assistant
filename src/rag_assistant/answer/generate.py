@@ -1,7 +1,4 @@
-"""生成：把检索到的片段变成带引用的回答。
-
-要求：只依据上下文作答；无依据则拒答；正文内联 [1][2]…，程序再附结构化来源块。
-"""
+"""生成：把检索到的片段变成带引用的回答。"""
 
 from __future__ import annotations
 
@@ -11,10 +8,10 @@ from pathlib import Path
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from .config import get_settings
-from .llm import LLMClient
-from .logging import get_logger
-from .observability import get_langfuse
+from ..core.config import get_settings
+from ..core.llm import LLMClient
+from ..core.logging import get_logger
+from ..core.observability import get_langfuse
 from .refusal import REFUSAL_MESSAGE, RefusalReason, is_refusal, pre_llm_refusal
 
 log = get_logger(__name__)
@@ -35,14 +32,12 @@ _SYSTEM = """你是「星云科技」内部知识助手。只能根据提供的�
 
 @dataclass(frozen=True)
 class Citation:
-    """单条检索命中及其与正文引用的对应关系。"""
-
-    index: int          # 编号，对应正文里的 [1][2]…
-    source: str         # 文件名，如 02-请假与考勤制度.md
-    source_path: str    # 完整路径
-    score: float        # 检索/重排分数
-    preview: str        # 片段预览（前 160 字）
-    cited: bool         # 是否被引用
+    index: int
+    source: str
+    source_path: str
+    score: float
+    preview: str
+    cited: bool
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -56,12 +51,11 @@ def _chunk_preview(text: str, limit: int = _PREVIEW_LEN) -> str:
 
 
 def cited_indices(answer: str) -> set[int]:
-    """从正文中解析 [1]、[2]… 引用编号。"""
     return {int(m) for m in _CITATION_RE.findall(answer)}
 
 
 def build_citations(chunks: list[dict], answer: str) -> list[Citation]:
-    """把检索 chunk 映射为带来源文件名、预览与是否被正文引用的列表。"""
+    """根据 Agent 终答中的 [1][2] 标记，标记哪些 chunk 被引用（ReAct 与 direct 共用）。"""
     used = cited_indices(answer)
     citations: list[Citation] = []
     for i, chunk in enumerate(chunks, 1):
@@ -73,14 +67,13 @@ def build_citations(chunks: list[dict], answer: str) -> list[Citation]:
                 source_path=src_path,
                 score=float(chunk.get("score", 0.0)),
                 preview=_chunk_preview(chunk.get("text", "")),
-                cited=i in used, # 是否被正文引用
+                cited=i in used,
             )
         )
     return citations
 
 
 def format_sources_block(citations: list[Citation]) -> str:
-    """生成可读的参考来源块（文件名 + 是否被引用 + 片段预览）。"""
     if not citations:
         return ""
 
@@ -93,7 +86,6 @@ def format_sources_block(citations: list[Citation]) -> str:
 
 
 def format_answer_with_sources(answer: str, chunks: list[dict]) -> str:
-    """正文 + 程序生成的来源块（CLI / 界面展示用）。"""
     block = format_sources_block(build_citations(chunks, answer))
     if not block:
         return answer
@@ -108,7 +100,6 @@ def _format_context(chunks: list[dict]) -> str:
 
 
 def generate(query: str, chunks: list[dict], *, tier: str = "strong") -> str:
-    """根据检索片段生成带引用的答案。"""
     if not chunks:
         return REFUSAL_MESSAGE
 
@@ -152,11 +143,7 @@ def produce_answer(
     use_rerank: bool,
     tier: str = "strong",
 ) -> tuple[str, bool, RefusalReason | None]:
-    """生成答案并应用拒答策略（eval 与 query 共用）。"""
-    # 调用拒答策略，判断是否需要拒答
-    # 拒答策略返回拒答原因
     reason = pre_llm_refusal(chunks, use_rerank=use_rerank)
-    # 如果拒答原因不为空，则记录拒答过程
     if reason is not None:
         log.info(
             "refuse.pre_llm",

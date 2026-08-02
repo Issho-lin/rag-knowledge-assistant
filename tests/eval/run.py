@@ -19,10 +19,10 @@ _ROOT = _EVAL_DIR.parents[1]
 if str(_EVAL_DIR) not in sys.path:
     sys.path.insert(0, str(_EVAL_DIR))
 
-from rag_assistant.config import get_settings
-from rag_assistant.generation import produce_answer
-from rag_assistant.logging import configure_logging, get_logger
-from rag_assistant.pipeline import retrieve_chunks
+from rag_assistant.core.config import get_settings
+from rag_assistant.answer import produce_answer
+from rag_assistant.core.logging import configure_logging, get_logger
+from rag_assistant.query.retrieve import retrieve_chunks
 from rag_assistant.retrieval.options import RetrievalOptions
 from rag_assistant.retrieval.vector import VectorStore
 

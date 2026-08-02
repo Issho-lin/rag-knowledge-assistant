@@ -1,4 +1,6 @@
-"""Gradio 最小 Web 界面：多轮问答 + 检索详情侧栏。
+"""Gradio 最小 Web 界面：多轮问答 + ReAct 检索详情侧栏。
+
+默认走 ``query_agent_react``（与 CLI ``--chat --react`` 一致）。
 
 用法（需先入库）：
     uv sync --extra ui
@@ -12,19 +14,43 @@ import sys
 from typing import TYPE_CHECKING
 
 from .conversation import ChatTurn
-from .logging import configure_logging, get_logger
+from .core.logging import configure_logging, get_logger
 
 if TYPE_CHECKING:
-    from .pipeline import QueryResult
+    from .query.result import QueryResult
 
 log = get_logger(__name__)
 
 
+def _import_gradio():
+    """加载 Gradio；未安装 ui 可选依赖时给出可操作的报错。"""
+    try:
+        import gradio as gr
+    except ImportError as exc:
+        raise SystemExit(
+            "未安装 Gradio。请先执行：\n"
+            "  uv sync --extra ui\n"
+            "然后再运行：\n"
+            "  uv run python -m rag_assistant.ui"
+        ) from exc
+    if not hasattr(gr, "Blocks"):
+        raise SystemExit(
+            "当前环境的 gradio 不完整（缺少 Blocks）。请重新安装 UI 依赖：\n"
+            "  uv sync --extra dev --extra ui\n"
+            "然后再运行：\n"
+            "  uv run python -m rag_assistant.ui"
+        )
+    return gr
+
+
 def format_result_detail(result: QueryResult) -> str:
-    """侧栏 Markdown：改写问句、拒答原因、参考来源。"""
+    """侧栏 Markdown：改写问句、路由工具、拒答原因、参考来源。"""
     parts: list[str] = []
     if result.rewritten_query:
         parts.append(f"**检索问句**：{result.rewritten_query}")
+    if result.routed_tool:
+        kb = result.routed_kb_id or "?"
+        parts.append(f"**路由工具**：`{result.routed_tool}` (kb={kb})")
     note = result.refusal_note()
     if note:
         parts.append(f"**拒答**：{note}")
@@ -61,8 +87,9 @@ def _chat_respond(
     retrieve: str,
     use_rerank: bool | None,
 ) -> tuple[list[dict], list[dict], str]:
-    """Gradio 回调：调用 pipeline.query 并更新会话状态。"""
-    from .pipeline import QueryResult, query
+    """Gradio 回调：调用 query_agent_react 并更新会话状态。"""
+    from .query.modes.agent_react import query_agent_react
+    from .query.result import QueryResult
 
     chat_history = chat_history or []
     turn_history = _turns_from_state(turn_history_raw)
@@ -72,7 +99,7 @@ def _chat_respond(
             QueryResult(answer="", chunks=[], citations=[])
         )
 
-    result = query(
+    result = query_agent_react(
         message,
         k=k,
         history=turn_history,
@@ -90,7 +117,12 @@ def _chat_respond(
         {"role": "assistant", "content": result.answer},
     ]
     detail = format_result_detail(result)
-    log.info("ui.chat", refused=result.refused, rewritten=bool(result.rewritten_query))
+    log.info(
+        "ui.chat",
+        refused=result.refused,
+        rewritten=bool(result.rewritten_query),
+        routed_tool=result.routed_tool,
+    )
     return chat_history, _turns_to_state(turn_history), detail
 
 
@@ -101,14 +133,14 @@ def build_demo(
     use_rerank: bool | None = None,
 ):
     """构建 Gradio Blocks 应用（便于测试与 launch）。"""
-    import gradio as gr
+    gr = _import_gradio()
 
     with gr.Blocks(title="星云科技内部知识助手") as demo:
         # 必须在 Blocks 内创建，否则 Gradio 6 会 KeyError: 0
         turn_state = gr.State(value=[])
         gr.Markdown(
             "# 星云科技内部知识助手\n"
-            "基于内部制度 / FAQ / SOP 的 RAG 问答。支持多轮追问；右侧展示检索问句与命中片段。"
+            "ReAct 多库问答（制度 / 表格 / PDF）。支持多轮追问；右侧展示路由工具、检索片段与来源。"
         )
         with gr.Row():
             with gr.Column(scale=3):

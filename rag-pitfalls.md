@@ -73,3 +73,12 @@
 - 根因：整个项目（含 `.venv`）从旧目录拷贝过来，`bin/activate` 写死创建时的绝对路径
 - 处理：`rm -rf .venv && uv venv && uv sync --extra dev --extra ui`；日常优先 `uv run` 少依赖 activate
 - 验证：`echo $VIRTUAL_ENV` 指向当前项目；`uv sync --extra dev --extra ui` 无 warning
+
+### ReAct 并行调工具 + 本地 rerank 导致进程崩溃（exit 139）
+- 时间/周次：2026-08-02 / Week 9
+- 当时在做：复合题 `--react`（报销 + 打印机），Agent 一次发出多个 tool_call
+- 现象：两个 `rerank.loading`、MPS 上 `Batches: 0%` 后 segfault；`resource_tracker: leaked semaphore`
+- 如何发现：终端 `last_exit_code: 139`；日志显示两次并行 hybrid + rerank
+- 根因：LangChain 并行执行多个工具；`CrossEncoder` 在 MPS 上非线程安全；曾用普通 `Lock` 嵌套 `_get_model` 还会死锁
+- 处理：`retrieval/rerank.py` 用 `RLock` 串行化加载与 `predict`；工具统一为只检索（`run_kb_retrieve`）
+- 验证：复合题 `--react` 可跑完并出现 `agent.react_done`（约 1 分钟级）

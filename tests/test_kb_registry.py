@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from rag_assistant.ingest.loaders import Document
-from rag_assistant.kb import get_kb, list_kbs, resolve_kb_id
-from rag_assistant.pipeline import _merge_retrieval_options
+from rag_assistant.kb import get_kb, get_kb_by_tool_name, list_kbs, resolve_kb_id
+from rag_assistant.query.retrieve import merge_retrieval_options
 
 
 def test_resolve_kb_by_kind():
@@ -22,10 +22,14 @@ def test_registry_has_three_kbs():
 
 
 def test_merge_options_adds_kb_filter():
-    opts = _merge_retrieval_options(None, "tabular")
+    opts = merge_retrieval_options(None, "tabular")
     assert opts.metadata_filter["kb"] == "tabular"
     assert get_kb("tabular").profile.retrieval.expand_parent is False
 
 
 def test_policies_profile_expands_parent():
     assert get_kb("policies").profile.retrieval.expand_parent is True
+
+
+def test_get_kb_by_tool_name():
+    assert get_kb_by_tool_name("search_pdf_handbook").id == "pdf"

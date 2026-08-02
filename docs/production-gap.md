@@ -17,6 +17,7 @@
 | **本地 cross-encoder 重排** | 「重排都要自己下模型」 | 小规模可本地；规模化常用 **Cohere Rerank API** 等托管 |
 | **CLI 同步 ingest** | 「入库就是跑一条命令」 | 队列 + worker + 状态 API + 失败重试 |
 | **全量 `--reset`** | 「改语料就重跑 ingest」 | 按 `doc_id` **增量 upsert/删除** |
+| **ReAct 并行调工具** | 「Agent 越快越好」 | 本地 cross-encoder 需串行（`RLock`）；或托管 rerank API |
 
 ---
 

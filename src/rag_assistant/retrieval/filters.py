@@ -8,8 +8,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..config import get_settings
-from ..logging import get_logger
+from ..core.config import get_settings
+from ..core.logging import get_logger
 
 log = get_logger(__name__)
 

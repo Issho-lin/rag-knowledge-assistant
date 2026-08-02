@@ -123,6 +123,24 @@
 
 ---
 
+## 10. Agent：工具只检索 + 两条编排路径
+
+**方案**（第 9 周）：
+
+| 路径 | 行为 |
+|------|------|
+| **ReAct**（`--react`，推荐用户入口） | `create_agent` 循环调用 `search_*` 工具；工具返回片段 Observation；Agent 写最终答案 |
+| **路由 Agent**（`--agent`，对照/评测） | cheap LLM 选 **1** 个工具 → `run_kb_retrieve` → `produce_answer` |
+| **直连**（`--query`，评测基线） | 全库或 `--kb` → `retrieve_chunks` → `produce_answer` |
+
+| | |
+|--|--|
+| **为什么工具不内含 generate** | 与 LangChain ReAct 惯例一致；复合题由 Agent 拆库拆问，避免每 tool 一次 LLM |
+| **为什么仍保留 `--agent`** | 路由 golden（`run_routing.py`）、单库低成本对照；不必作为用户双模式之一 |
+| **并行 tool 注意** | 本地 rerank 非线程安全；`rerank.py` 使用 `RLock` |
+
+---
+
 ## 9. 与业界落地的差距（教学简化 vs 生产默认）
 
 练习仓库 deliberately 采用可跑通的最小实现（如 BM25 全库打分、Chroma 本地单库、pypdf 直抽）。**不等于**生产最佳实践。

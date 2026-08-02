@@ -1,6 +1,6 @@
 """拒答策略单测。"""
 
-from rag_assistant.refusal import (
+from rag_assistant.answer.refusal import (
     REFUSAL_MESSAGE,
     RefusalReason,
     is_refusal,

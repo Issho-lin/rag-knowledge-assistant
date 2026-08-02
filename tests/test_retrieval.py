@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from rag_assistant.ingest.chunking import chunk_by_heading_info
 from rag_assistant.ingest.loaders import Document
-from rag_assistant.query_decompose import _parse_subqueries
+from rag_assistant.query.preprocess.decompose import _parse_subqueries
 from rag_assistant.retrieval.context import expand_parent_context
 from rag_assistant.retrieval.bm25 import BM25Store
 from rag_assistant.retrieval.filters import chroma_where, filter_chunks
