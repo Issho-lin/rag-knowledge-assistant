@@ -32,7 +32,7 @@
 
 **已做完的**：入库（含 PDF）、**逻辑多库 + Profile**、混合检索、重排、带来源的回答、规则+模型两层拒答、多轮改写、**Agent 工具路由（`--agent`）**、**ReAct 多工具（`--react`，主路径）**、命令行演示、可观测、可重复评测。
 
-**还没做的**（被问到如实说）：扩大 ReAct golden（当前 6/7）、关系/图检索、Ragas 自动化打分、生产级物理分库与托管向量库。
+**还没做的**（被问到如实说）：第 10 周生产存储（Qdrant/OpenSearch）、第 11 周 Graph RAG（Neo4j）、扩大 ReAct golden、Ragas 自动化打分。
 
 ---
 
@@ -301,7 +301,7 @@ ReAct 会把**多次工具调用**的 chunks 合并后再建引用，所以复�
 
 短期：扩大 ReAct golden；更难复合题。
 
-中期（第 10–12 周）：关系/图检索做成新 Tool 挂到 ReAct；多模态；CRAG。
+后期（第 10–12 周）：第 10 周生产存储改造；第 11 周 Graph RAG（Neo4j + `query_relations`）；第 12 周多模态 + CRAG。
 
 长期工程化：题集扩大、Ragas 或人工评审、物理分库/托管向量库——按 `production-gap.md` 的触发条件来，不提前过度设计。
 

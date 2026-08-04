@@ -60,6 +60,23 @@ def load_all_documents(only: str | None = None) -> list[Document]:
     return docs
 
 
+def _reset_vector_store() -> None:
+    """按后端清空向量索引。"""
+    s = get_settings()
+    if s.vector_backend.lower() == "qdrant":
+        from qdrant_client import QdrantClient
+
+        client = QdrantClient(url=s.qdrant_url)
+        if client.collection_exists(s.qdrant_collection):
+            client.delete_collection(s.qdrant_collection)
+            log.info("ingest.reset_qdrant", collection=s.qdrant_collection)
+        return
+    chroma_path = UNIFIED_CHROMA
+    if chroma_path.exists():
+        shutil.rmtree(chroma_path)
+        log.info("ingest.reset_chroma", path=str(chroma_path))
+
+
 def ingest(*, reset: bool = False, only: str | None = None) -> int:
     """将知识库全部（或指定包）切块入库：向量库 + BM25。"""
     configure_logging()
@@ -70,9 +87,8 @@ def ingest(*, reset: bool = False, only: str | None = None) -> int:
         return 0
 
     chroma_path = UNIFIED_CHROMA
-    if reset and chroma_path.exists():
-        shutil.rmtree(chroma_path)
-        log.info("ingest.reset_store", path=str(chroma_path))
+    if reset:
+        _reset_vector_store()
 
     all_ids: list[str] = []
     all_chunks: list[str] = []
@@ -108,6 +124,7 @@ def ingest(*, reset: bool = False, only: str | None = None) -> int:
     bm25 = BM25Store(BM25_PATH)
     bm25.rebuild(all_ids, all_chunks, all_sources, metadatas=all_metadatas)
 
+    backend = get_settings().vector_backend
     bundles = sorted({d.metadata.get("corpus", "?") for d in docs})
     log.info(
         "ingest.done",
@@ -116,9 +133,9 @@ def ingest(*, reset: bool = False, only: str | None = None) -> int:
         chunks=total,
         store_count=store.count(),
         bm25_count=bm25.count(),
-        chroma=str(chroma_path),
+        vector_backend=backend,
     )
     print(f"\n已索引 {total} 个 chunk，来源语料包: {', '.join(bundles)}")
-    print(f"统一向量库: {chroma_path}")
+    print(f"向量库后端: {backend}" + (f" ({get_settings().qdrant_url})" if backend == "qdrant" else f" ({chroma_path})"))
     print(f"BM25 索引: {BM25_PATH}")
     return total

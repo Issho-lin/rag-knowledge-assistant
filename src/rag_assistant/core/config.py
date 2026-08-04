@@ -38,6 +38,19 @@ class Settings(BaseSettings):
     corpus_dir: Path = Field(Path("./data/corpus"), alias="CORPUS_DIR")
     chroma_path: Path = Field(Path("./data/chroma/unified"), alias="CHROMA_PATH")
 
+    # 向量库后端：chroma=CI/离线；qdrant=生产（需 docker compose up qdrant）
+    vector_backend: str = Field("chroma", alias="VECTOR_BACKEND")
+    qdrant_url: str = Field("http://localhost:6333", alias="QDRANT_URL")
+    qdrant_collection: str = Field("corpus", alias="QDRANT_COLLECTION")
+
+    # OpenSearch BM25（Phase 2；BM25_BACKEND 切换待实现）
+    opensearch_url: str = Field("http://localhost:9200", alias="OPENSEARCH_URL")
+
+    # Neo4j Graph RAG（Phase 11；ingest-graph / query_relations 待实现）
+    neo4j_uri: str = Field("bolt://localhost:7687", alias="NEO4J_URI")
+    neo4j_user: str = Field("neo4j", alias="NEO4J_USER")
+    neo4j_password: str = Field("changeme", alias="NEO4J_PASSWORD")
+
 
 _settings: Settings | None = None
 

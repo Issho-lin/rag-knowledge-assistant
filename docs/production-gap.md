@@ -237,7 +237,7 @@ data/chroma/policies/bm25.pkl
 
 | 序号 | 项 | 说明 | 计划周次 |
 |------|-----|------|----------|
-| P2-1 | **关系 / Graph KB** | 审批链、组织关系；`query_relations` 工具 | 第 10 周 |
+| P2-1 | **关系 / Graph KB** | Neo4j + `query_relations`；prose 抽取建图 | **第 11 周** |
 | P2-2 | **多模态 KB** | 截图/幻灯；`search_visual` | 第 11 周 |
 | P2-3 | **CRAG / Self-RAG** | 挂在 Profile 上的纠错层，非另起系统 | 第 12 周 |
 | P2-4 | **HyDE / 查询扩展** | 某 Profile 内开关，before/after | 第 10–12 周可选 |
@@ -250,7 +250,7 @@ data/chroma/policies/bm25.pkl
 
 - Embedding 微调  
 - 公网多租户 SaaS 部署  
-- GraphRAG 全量知识图谱构建（除非第 10 周专项）  
+- GraphRAG 全量社区摘要（Microsoft 论文级）——第 11 周做 **Neo4j + 工具路由** 即可，不必上社区层
 
 ---
 
@@ -266,13 +266,10 @@ data/chroma/policies/bm25.pkl
          ├──► P1 分库 eval / run.py --kb
          │
          ▼
-       Week 10–12 Graph / 多模态 / CRAG（按周计划）
+       第 10 生产存储改造（见 production-upgrade.md）
          │
          ▼
-       按需：P1 倒排 BM25、增量 ingest
-         │
-         ▼
-       按需：P2 物理分库（多租户/大库）→ 托管向量库 / ES 统一检索
+       第 11 Graph RAG（Neo4j）→ 第 12 多模态 + CRAG
 ```
 
 ---
@@ -289,7 +286,6 @@ data/chroma/policies/bm25.pkl
 
 ## 6. 相关文档
 
-- [学习路线图](./learning-roadmap.md)（**当前进度、12 周全景、每周生产认知**）
 - [系统架构](./architecture.md)  
 - [入库流水线](./ingest-pipeline.md)  
 - [问答流水线](./query-pipeline.md)  

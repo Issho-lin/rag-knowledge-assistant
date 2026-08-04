@@ -131,5 +131,4 @@ rag-react-query
 ## 相关文档
 
 - [问答流水线](./query-pipeline.md)
-- [学习路线图](./learning-roadmap.md)
 - [与业界落地差距](./production-gap.md)

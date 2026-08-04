@@ -6,7 +6,8 @@
 > 节奏：每周约 15–20h · 通用工程已具备 · 已练过 8 个 agent demo。  
 > 完成标准：能独立讲清一条完整 RAG 链路；`rag-pitfalls.md` 里记的都是你亲手遇到、排查、验证过的事。  
 > **执行纪律**：**第 1–6 周按原主线继续往下做，不提前跳后期**；第 7–12 周仅在主线复盘完成、且你自己觉得「原先计划已掌握」之后再开。  
-> **节奏约定（与前三周一致）**：每周一个清晰主题、直接上正确方案并讲清 why、用手测/trace/eval 验收、记 learning-log；**循序渐进，不并行开多条后期线**。  
+> **节奏约定（与前三周一致）**：每周一个清晰主题、直接上正确方案并讲清 why、用手测/trace/eval 验收；**循序渐进，不并行开多条后期线**。  
+> **文档导航**：迷路先看 [`README.md`](README.md) 顶部 3 文档表；demo vs 生产看 [`docs/production-gap.md`](docs/production-gap.md)。  
 > **后期纪律**：按「场景 → 补语料（独立知识库）→ 该库专属策略/Profile → 注册为 Agent 工具 → 对照」推进；**不为「现在没有该语料」而跳过策略**。  
 > **后期能力主轴（主线完成后再练）**：不同语料 = 不同知识库 = 不同处理策略 = 不同工具；智能体选工具做 RAG 路由。
 
@@ -110,13 +111,14 @@
 过滤/子查询/窗口     每库独立策略；补 PDF        LLM 选 search_* 工具
 
 第10周★            第11周★                   第12周★
-新 KB：关系/图谱     新 KB：多模态              纠错层挂工具 + 总复盘
-新 tool + 路由验收   新 tool + 路由验收         CRAG/Self-RAG 按库可配
+生产存储改造         Graph RAG（Neo4j）       多模态 + CRAG + 复盘
+Qdrant/OpenSearch   query_relations           search_visual
 ```
 
-**当前进度（2026-08-02）**：第 1–8 周已完成；**下一动作 = 第 9 周 Agent 工具路由**。  
-**一张表看清全局**：[`docs/learning-roadmap.md`](docs/learning-roadmap.md)（含每周生产认知、当前指针、DoD）。  
-**Demo vs 生产**：[`docs/production-gap.md`](docs/production-gap.md)（主动标出 Chroma、逻辑分库、BM25 形态等易漏讲项）。
+**当前进度（2026-08-04）**：第 1–**9** 周已完成；**当前 = 第 10 周生产存储改造**。  
+**第 10 周执行文档**：[`docs/production-upgrade.md`](docs/production-upgrade.md)（只看 Phase 进度表）。  
+**Demo vs 生产**：[`docs/production-gap.md`](docs/production-gap.md)。  
+**跑通与命令**：[`README.md`](README.md)。
 
 **后期总原则（2026-07-28 订正）**：
 - **能力目标**：掌握「分库 RAG + Agent 工具路由」——不是只调单个 pipeline。
@@ -129,10 +131,9 @@
 - 每场景要求：专项 golden + before/after；新 KB 上线时同时验收 **路由是否选对工具**。
 
 **贯穿全程**：
-- `docs/learning-roadmap.md`：**当前指针 + 12 周全景 + 每周生产认知**（迷路先看）
-- `learning-log.md`：决策与进展；**每周收尾必填「生产认知」3 条**
-- `docs/production-gap.md`：demo 简化 vs 生产默认 vs 升级触发
-- `rag-pitfalls.md`：**只追加真实遇到的问题**（无则不写）
+- [`README.md`](README.md)：跑通、命令、**文档导航（只看 3 个）**
+- [`docs/production-gap.md`](docs/production-gap.md)：demo 简化 vs 生产默认 vs 升级触发
+- [`rag-pitfalls.md`](rag-pitfalls.md)：**只追加真实遇到的问题**（无则不写）
 
 ---
 
@@ -148,8 +149,8 @@
 | HTML 内部 Wiki | `data/corpus/internal/html/` | 已接入 |
 | CSV 通讯录等 | `data/corpus/internal/csv/` | 已接入 |
 | PDF 制度 / 长文档 | `data/corpus/internal/pdf/` | **第 8 周补语料并练**解析与分块（缺则当场补，不跳过） |
-| 关系型（系统依赖/组织/审批链） | 后期新建包，如 `data/corpus/relations/` | **第 10 周补**，支撑 GraphRAG / 结构化工具 |
-| 多模态（架构图/截图/幻灯） | 后期新建包，如 `data/corpus/multimodal/` | **第 11 周补**，支撑多模态 RAG |
+| 关系型（组织/依赖/审批链） | prose 制度 + 架构 MD + CSV | **第 11 周**：Neo4j + `query_relations`（见 `week11-graph-rag.md`） |
+| 多模态（架构图/截图/幻灯） | 后期新建包，如 `data/corpus/multimodal/` | **第 12 周补**，支撑多模态 RAG |
 | 开放域/易检索失败题 | 扩 golden + 可选外链语料 | **第 12 周补**，支撑 CRAG / Self-RAG |
 
 **硬性要求**：ingest 可重跑；语料与代码解耦（换目录即可）。  
@@ -309,9 +310,9 @@
 | 7 | 仍可单库，先补齐通用能力 | （尚未拆工具） | 过滤、子查询、父文档/窗口 → 日后写入 COMMON 或各 Profile |
 | 8 | 拆多 KB；**补 PDF KB** | 先能按 kb_id 调用；第 9 周正式挂工具 | 每库 Profile；PDF 解析；分块 A/B |
 | 9 | 已有文本类多 KB | `search_hr` / `search_it` / `search_directory`… | **Agent 路由骨架**；权限/步数/空结果 |
-| 10 | **补关系 KB** | `query_relations` | GraphRAG / 图检索；与文档工具对照 |
-| 11 | **补多模态 KB** | `search_visual` | 图文解析入库 + 多模态检索 |
-| 12 | 纠错能力按库挂载 | 上述工具内部可开 CRAG/Self-RAG | 易失败专项题；总复盘「路由+分策略」 |
+| 10 | **生产存储改造** | （无新工具） | Qdrant + OpenSearch；物理分库；增量 ingest |
+| 11 | **关系 KB** | `query_relations` | Neo4j + prose 抽取；与文档工具路由对照 |
+| 12 | **多模态 KB** + 纠错 | `search_visual` + Profile 挂 CRAG | 图文检索；总复盘 |
 
 ---
 
@@ -371,47 +372,59 @@
 
 ---
 
-### 第 10 周：★ 新 KB：关系语料 + Graph 工具接入路由
+### 第 10 周：★ 生产级存储改造（Qdrant + OpenSearch）
 
-**目标**：再练一遍扩展节奏——**补新语料类型 → 新 KB → 新策略 → 新工具 → Agent 能选中**。
+**目标**：把第 1–9 周的 RAG 骨架接到生产存储；**不换 Agent 逻辑，只换腿**。
 
-**必做**：
-- [ ] 补关系型语料包（依赖/组织/审批链等）→ `KB_relations`
-- [ ] Profile：GraphRAG 或图检索（与文档 hybrid 不同）
-- [ ] 工具 `query_relations` 注册进 Agent；路由题：关系题应点图工具，制度题应点文档工具
-- [ ] before/after：仅文档工具 vs 文档+图工具
-- [ ] （可选）HyDE 作为某文档 KB Profile 内开关，做一组对照
+**唯一执行文档**：[`docs/production-upgrade.md`](docs/production-upgrade.md)
 
-**产出**：关系 KB + 图工具挂接 Agent；路由与质量对照。
+**必做（按 Phase 顺序，一次只做一个）**：
 
----
+| Phase | 交付 |
+|-------|------|
+| 0 | `docker-compose.yml`（Qdrant + OpenSearch）+ 环境变量 |
+| 1 | Chroma → **Qdrant** |
+| 2 | `bm25.pkl` → **OpenSearch** |
+| 3 | 逻辑分库 → **物理分库** |
+| 4 | 全量 ingest → **增量 upsert** |
 
-### 第 11 周：★ 新 KB：多模态语料 + Visual 工具接入路由
+**明确不做**：GraphRAG（顺延第 11 周，见 [`week11-graph-rag.md`](docs/week11-graph-rag.md)）。
 
-**目标**：同样扩展节奏，换图文语料。
+**做完应能讲清**：
+1. 向量检索与关键词检索在生产里为什么用两个存储？
+2. `VECTOR_BACKEND=chroma` 与 `qdrant` 切换时，代码路径差在哪？
 
-**必做**：
-- [ ] 补图/截图/幻灯语料 → `KB_multimodal`
-- [ ] Profile：图文解析入库 + 多模态检索（或图→描述再检索）
-- [ ] 工具 `search_visual` 接入 Agent；路由题：必须看图才能答的应选该工具
-- [ ] before/after：无视觉 KB vs 有视觉 KB
-
-**产出**：多模态 KB + 工具挂接 Agent；对照数据。
+**产出**：`docker compose` 可跑通；`production-gap.md` 对应行标「已升级」。
 
 ---
 
-### 第 12 周：★ 纠错策略挂到工具/Profile + 能力总复盘
+---
 
-**目标**：CRAG / Self-RAG 不是另起一套系统，而是 **按需挂在某些 KB 的 Profile 上**；并复盘「分库工具路由」整条能力。
+### 第 11 周：★ Graph RAG（Neo4j + `query_relations`）
+
+**目标**：关系/多跳问题走图检索；**必须**走生产路径（prose → 抽取 → Neo4j → Cypher），不做 JSON 内存图。
+
+**唯一执行文档**：[`docs/week11-graph-rag.md`](docs/week11-graph-rag.md)
 
 **必做**：
-- [ ] 补易失败专项题（空结果、错召回、边界题）
-- [ ] **CRAG（精简版）**、**Self-RAG（精简版）** 作为 Profile 可选层（可先挂在 1～2 个最需要的 KB 上）
-- [ ] 对照：同工具关/开纠错层
-- [ ] 总复盘文档/架构图：列出全部 KB × Profile 差异 × 工具 × 路由验收结果
-- [ ] 脱稿能讲清：如何为新语料扩一条「KB → 策略 → 工具 → Agent 可选」链路
+- [ ] prose 语料 + `ingest-graph` → Neo4j
+- [ ] `query_relations` + ReAct 第四工具
+- [ ] 路由 eval：关系题 vs 制度题
+- [ ] before/after 关系题
 
-**产出**：纠错层可配；第 7–12 周「分库 Agent RAG」能力复盘完成。
+**产出**：图工具挂 Agent；能讲清「文档 RAG vs 图 RAG」分工。
+
+---
+
+### 第 12 周：★ 多模态 + CRAG + 总复盘
+
+**必做**：
+- [ ] 补图/截图/幻灯语料 → `KB_multimodal`；工具 `search_visual`（精简版可接受）
+- [ ] 补易失败专项题；**CRAG / Self-RAG** 挂 Profile（精简版）
+- [ ] 总复盘：全部 KB × Profile × 工具 × 路由结果
+- [ ] 脱稿讲清扩展法：「KB → 策略 → 工具 → Agent」
+
+**产出**：多模态 + 纠错可演示；第 7–12 周能力复盘完成。
 
 **仍可后置**：嵌入微调、公网部署、求职包装。
 
@@ -423,8 +436,8 @@
 □ 本周链路哪一环变了？
 □ 有没有 before/after（数字或具体问答案例）？
 □ 本周是否遇到异常/失败/回退？有 → 是否已写入 rag-pitfalls.md？
-□ learning-log 是否填了「本周生产认知」3 条？（Demo / 生产 / 升级触发）
-□ 对照 docs/learning-roadmap.md「当前指针」——下周是否只开一条线？
+□ 对照 production-gap §1：能指出本周一处 demo 简化 + 生产替代方案吗？
+□ 下周是否只开一条线？
 □ 关掉 AI 助手，我还能讲清本周决策吗？
 ```
 
@@ -443,9 +456,9 @@
 | 第 6 周末 | 可演示；流程能脱稿讲；手册 = 过程实录（不凑数） |
 | 第 8 周末 | 多 KB + 多 Profile + Registry；PDF KB 可按 kb_id 正确检索 |
 | 第 9 周末 | Agent 经工具选 KB；路由专项 eval 通过（选对工具） |
-| 第 10 周末 | 关系 KB + `query_relations` 接入路由，有对照 |
-| 第 11 周末 | 多模态 KB + `search_visual` 接入路由，有对照 |
-| 第 12 周末 | 纠错层可挂 Profile；能脱稿讲「KB→策略→工具→Agent」扩展法 |
+| 第 10 周末 | Qdrant + OpenSearch；分库或增量 ingest 至少一项；eval 通过 |
+| 第 11 周末 | Neo4j 关系 KB + `query_relations`；路由对照 |
+| 第 12 周末 | 多模态 + CRAG 精简版；12 周总复盘 |
 
 ---
 
@@ -487,10 +500,9 @@
 
 ## 11. 当前立刻做的事（按进度）
 
-1. **第 8 周收尾**：见 [`docs/learning-roadmap.md`](docs/learning-roadmap.md) §第 8 周收尾清单  
-2. **然后第 9 周**：Agent 工具路由（不要并行 P2 换库/物理分库）  
-3. 每周日更新 `learning-roadmap` 当前指针 + `learning-log` 生产认知  
-4. 遇选型问题先查 `production-gap`，不要等踩坑才补文档
+1. **当前进度**：以代码与 `pytest` / eval 为准；文档以 [`production-gap.md`](docs/production-gap.md) 为 demo vs 生产准绳  
+2. **不要并行**：一次只开一条改造线（例如先 Qdrant，再 OpenSearch）  
+3. 遇选型问题先查 `production-gap`，不要等踩坑才补文档
 
 ---
 
