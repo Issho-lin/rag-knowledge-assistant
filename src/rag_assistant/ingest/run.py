@@ -10,7 +10,8 @@ from ..core.config import get_settings
 from ..core.logging import configure_logging, get_logger
 from ..core.paths import BM25_PATH, UNIFIED_CHROMA
 from ..kb import kb_profile_for_doc, resolve_kb_id
-from ..retrieval.bm25 import BM25Store
+from ..retrieval.bm25_store import create_bm25_store
+from ..retrieval.opensearch_bm25 import OpenSearchBM25Store
 from ..retrieval.metadata import build_chunk_metadata
 from ..retrieval.vector import VectorStore
 from .chunking import chunk_document
@@ -60,6 +61,17 @@ def load_all_documents(only: str | None = None) -> list[Document]:
     return docs
 
 
+def _reset_bm25_index() -> None:
+    """按后端清空关键词索引。"""
+    s = get_settings()
+    if s.bm25_backend.lower() == "opensearch":
+        OpenSearchBM25Store().delete_index()
+        return
+    if BM25_PATH.is_file():
+        BM25_PATH.unlink()
+        log.info("ingest.reset_bm25_pkl", path=str(BM25_PATH))
+
+
 def _reset_vector_store() -> None:
     """按后端清空向量索引。"""
     s = get_settings()
@@ -89,6 +101,7 @@ def ingest(*, reset: bool = False, only: str | None = None) -> int:
     chroma_path = UNIFIED_CHROMA
     if reset:
         _reset_vector_store()
+        _reset_bm25_index()
 
     all_ids: list[str] = []
     all_chunks: list[str] = []
@@ -121,10 +134,11 @@ def ingest(*, reset: bool = False, only: str | None = None) -> int:
 
     store = VectorStore(chroma_path=chroma_path)
     total = store.add(all_chunks, all_sources, ids=all_ids, metadatas=all_metadatas)
-    bm25 = BM25Store(BM25_PATH)
+    bm25 = create_bm25_store(BM25_PATH)
     bm25.rebuild(all_ids, all_chunks, all_sources, metadatas=all_metadatas)
 
     backend = get_settings().vector_backend
+    bm25_backend = get_settings().bm25_backend
     bundles = sorted({d.metadata.get("corpus", "?") for d in docs})
     log.info(
         "ingest.done",
@@ -134,8 +148,16 @@ def ingest(*, reset: bool = False, only: str | None = None) -> int:
         store_count=store.count(),
         bm25_count=bm25.count(),
         vector_backend=backend,
+        bm25_backend=bm25_backend,
     )
     print(f"\n已索引 {total} 个 chunk，来源语料包: {', '.join(bundles)}")
-    print(f"向量库后端: {backend}" + (f" ({get_settings().qdrant_url})" if backend == "qdrant" else f" ({chroma_path})"))
-    print(f"BM25 索引: {BM25_PATH}")
+    print(
+        f"向量库后端: {backend}"
+        + (f" ({get_settings().qdrant_url})" if backend == "qdrant" else f" ({chroma_path})")
+    )
+    if bm25_backend == "opensearch":
+        s = get_settings()
+        print(f"BM25 索引: opensearch ({s.opensearch_url}, index={s.opensearch_index})")
+    else:
+        print(f"BM25 索引: {BM25_PATH}")
     return total

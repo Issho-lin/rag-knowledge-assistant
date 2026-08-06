@@ -8,7 +8,7 @@ from __future__ import annotations
 from typing import Any
 
 from ..core.logging import get_logger
-from .bm25 import BM25Store
+from .bm25_backend import BM25Backend
 from .vector import VectorStore
 
 log = get_logger(__name__)
@@ -52,7 +52,7 @@ def rrf_fuse(
 class HybridRetriever:
     """向量召回 + BM25 召回 → RRF 融合。"""
 
-    def __init__(self, vector: VectorStore, bm25: BM25Store) -> None:
+    def __init__(self, vector: VectorStore, bm25: BM25Backend) -> None:
         # 初始化向量检索引擎
         self.vector = vector
         # 初始化 BM25 检索引擎

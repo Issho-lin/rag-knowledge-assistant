@@ -43,8 +43,10 @@ class Settings(BaseSettings):
     qdrant_url: str = Field("http://localhost:6333", alias="QDRANT_URL")
     qdrant_collection: str = Field("corpus", alias="QDRANT_COLLECTION")
 
-    # OpenSearch BM25（Phase 2；BM25_BACKEND 切换待实现）
+    # BM25：pkl=CI/离线（默认）| opensearch=生产（需 docker compose up opensearch）
+    bm25_backend: str = Field("pkl", alias="BM25_BACKEND")
     opensearch_url: str = Field("http://localhost:9200", alias="OPENSEARCH_URL")
+    opensearch_index: str = Field("corpus", alias="OPENSEARCH_INDEX")
 
     # Neo4j Graph RAG（Phase 11；ingest-graph / query_relations 待实现）
     neo4j_uri: str = Field("bolt://localhost:7687", alias="NEO4J_URI")

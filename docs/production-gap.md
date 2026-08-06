@@ -229,7 +229,7 @@ data/chroma/policies/bm25.pkl
 | P1-2 | **PDF 解析管线** | pypdf 乱码/无结构 | Docling/Unstructured → MD → heading 切块；乱码走 OCR | 真实 PDF 语料上线前 |
 | P1-3 | **PDF 噪声过滤** | 封面/目录入库 | 页级规则 + 可选 `is_noise_page`；ingest 日志记录 drop 原因 | 与 P1-2 同步 |
 | P1-4 | **增量 ingest** | 每次全量 embedding | `doc_id` + `file_hash`；upsert/删除失效 chunk | 语料周更时 |
-| P1-5 | **简化 filter_chunks** | metadata 与召回重复 | `filter_chunks` 只管低分；`source_contains` 等下推不了的条件才后置 | 随时小改 |
+| P1-5 | **简化 filter_chunks** | metadata 与召回重复 | `filter_chunks` 只管低分 | 随时小改 |
 | P1-6 | **Ragas / 扩 golden** | keyword 评分脆 | 50+ 题；抽样 Ragas faithfulness（可选） | 第 12 周前后 |
 | P1-7 | **入库 chunk 预览** | 无 Dify 式 preview | ingest 后输出抽样 chunk 或 CLI `--preview-chunks` | 接真实语料前 |
 

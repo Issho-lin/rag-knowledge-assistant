@@ -4220,6 +4220,7 @@ dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "numpy", version = "2.5.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "openai" },
+    { name = "opensearch-py" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
     { name = "pymupdf" },
@@ -4246,7 +4247,6 @@ lc = [
 ]
 prod = [
     { name = "neo4j" },
-    { name = "opensearch-py" },
 ]
 ui = [
     { name = "gradio" },
@@ -4269,7 +4269,7 @@ requires-dist = [
     { name = "neo4j", marker = "extra == 'prod'", specifier = ">=5.0" },
     { name = "numpy", specifier = ">=1.26" },
     { name = "openai", specifier = ">=1.40" },
-    { name = "opensearch-py", marker = "extra == 'prod'", specifier = ">=2.4" },
+    { name = "opensearch-py", specifier = ">=2.4" },
     { name = "pydantic", specifier = ">=2.7" },
     { name = "pydantic-settings", specifier = ">=2.3" },
     { name = "pymupdf", specifier = ">=1.28.0" },

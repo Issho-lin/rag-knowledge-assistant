@@ -8,7 +8,7 @@ from typing import Any, Callable
 from ..core.config import get_settings
 from ..core.logging import get_logger
 from ..query.preprocess.decompose import decompose_for_retrieval
-from .bm25 import BM25Store
+from .bm25_store import create_bm25_store
 from .context import expand_parent_context
 from .filters import filter_chunks
 from .hybrid import HybridRetriever, rrf_fuse
@@ -35,7 +35,7 @@ def _base_retrieve(
     store = VectorStore(chroma_path=chroma_path)
     if mode == "vector":
         return store.query(q, k=k, metadata_filter=meta)
-    bm25 = BM25Store(bm25_path)
+    bm25 = create_bm25_store(bm25_path)
     if bm25.count() == 0:
         log.warning("retrieve.bm25_empty", hint="run --ingest --reset; fallback to vector")
         return store.query(q, k=k, metadata_filter=meta)

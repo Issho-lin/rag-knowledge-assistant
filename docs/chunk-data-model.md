@@ -156,7 +156,7 @@ Cross-encoder 对「问题 + chunk 正文」重新打分，`score` **再次替�
 
 ### 4. 过滤（filter_chunks）
 
-rerank 低分阈值丢弃；`metadata_filter` 在召回阶段已下推，此处做**二次校验**（含无法下推的 `source_contains`）。
+rerank 低分阈值丢弃；`metadata_filter` 在召回阶段已下推，此处做**二次校验**。
 
 ### 5. 父文档扩展（expand_parent_context，可选）
 

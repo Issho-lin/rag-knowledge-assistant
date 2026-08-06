@@ -31,11 +31,8 @@ def _point_id(chunk_id: str) -> str:
 def _qdrant_filter(metadata_filter: dict[str, str] | None) -> Filter | None:
     if not metadata_filter:
         return None
-    exact = {k: v for k, v in metadata_filter.items() if k != "source_contains"}
-    if not exact:
-        return None
     return Filter(
-        must=[FieldCondition(key=k, match=MatchValue(value=v)) for k, v in exact.items()]
+        must=[FieldCondition(key=k, match=MatchValue(value=v)) for k, v in metadata_filter.items()]
     )
 
 

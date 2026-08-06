@@ -15,31 +15,22 @@ log = get_logger(__name__)
 
 
 def chroma_where(metadata_filter: dict[str, str]) -> dict[str, Any] | None:
-    """将 metadata_filter 转为 Chroma collection.query(where=...) 子句。
-
-    仅支持等值匹配；`source_contains` 无法下推，留待 filter_chunks 处理。
-    """
-    exact = {k: v for k, v in metadata_filter.items() if k != "source_contains"}
-    if not exact:
+    """将 metadata_filter 转为 Chroma collection.query(where=...) 子句（等值匹配）。"""
+    if not metadata_filter:
         return None
-    if len(exact) == 1:
-        key, value = next(iter(exact.items()))
+    if len(metadata_filter) == 1:
+        key, value = next(iter(metadata_filter.items()))
         return {key: value}
-    return {"$and": [{key: value} for key, value in exact.items()]}
+    return {"$and": [{key: value} for key, value in metadata_filter.items()]}
 
 
 def match_metadata(chunk: dict[str, Any], flt: dict[str, str]) -> bool:
-    """chunk 或入库 metadatas 字典是否满足过滤条件。"""
+    """chunk 或入库 metadatas 字典是否满足过滤条件（等值匹配）。"""
     return _match_metadata(chunk, flt)
 
 
 def _match_metadata(chunk: dict[str, Any], flt: dict[str, str]) -> bool:
-    """全部键值匹配才保留；source_contains 为子串匹配。"""
     for key, expected in flt.items():
-        if key == "source_contains":
-            if expected not in chunk.get("source", ""):
-                return False
-            continue
         if str(chunk.get(key, "")) != expected:
             return False
     return True

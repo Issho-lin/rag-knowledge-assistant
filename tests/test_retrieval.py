@@ -36,7 +36,6 @@ def test_chroma_where_single_and_and():
     assert chroma_where({"kb": "pdf", "corpus": "kb_pdf"}) == {
         "$and": [{"kb": "pdf"}, {"corpus": "kb_pdf"}],
     }
-    assert chroma_where({"source_contains": "faq"}) is None
 
 
 def test_bm25_metadata_filter_at_recall(tmp_path):
