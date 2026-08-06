@@ -15,7 +15,7 @@ from .metadata import chunk_from_hit
 
 log = get_logger(__name__)
 
-_COLLECTION = "corpus"
+_DEFAULT_COLLECTION = "corpus"
 
 
 class VectorStoreBackend(Protocol):
@@ -41,13 +41,19 @@ class VectorStoreBackend(Protocol):
 
 
 class ChromaVectorStore:
-    def __init__(self, chroma_path: Path | None = None) -> None:
+    def __init__(
+        self,
+        chroma_path: Path | None = None,
+        *,
+        collection_name: str | None = None,
+    ) -> None:
         s = get_settings()
         path = chroma_path if chroma_path is not None else s.chroma_path
         path.mkdir(parents=True, exist_ok=True)
         self._client = chromadb.PersistentClient(path=str(path))
+        coll_name = collection_name or _DEFAULT_COLLECTION
         self._coll = self._client.get_or_create_collection(
-            name=_COLLECTION, metadata={"hnsw:space": "cosine"}
+            name=coll_name, metadata={"hnsw:space": "cosine"}
         )
 
     def add(

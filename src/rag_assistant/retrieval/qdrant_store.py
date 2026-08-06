@@ -37,9 +37,9 @@ def _qdrant_filter(metadata_filter: dict[str, str] | None) -> Filter | None:
 
 
 class QdrantVectorStore:
-    def __init__(self) -> None:
+    def __init__(self, *, collection_name: str | None = None) -> None:
         s = get_settings()
-        self._collection = s.qdrant_collection
+        self._collection = collection_name or s.qdrant_collection
         self._client = QdrantClient(url=s.qdrant_url)
         self._ensure_collection()
 

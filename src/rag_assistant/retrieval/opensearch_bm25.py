@@ -47,9 +47,9 @@ def _filter_clauses(metadata_filter: dict[str, str] | None) -> list[dict[str, An
 
 
 class OpenSearchBM25Store:
-    def __init__(self) -> None:
+    def __init__(self, *, index_name: str | None = None) -> None:
         s = get_settings()
-        self._index = s.opensearch_index
+        self._index = index_name or s.opensearch_index
         self._client = _build_client(s.opensearch_url)
 
     def delete_index(self) -> None:

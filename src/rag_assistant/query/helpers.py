@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 from ..core.logging import get_logger
+from ..kb.storage import total_vector_count
 from .result import QueryResult
-from ..core.paths import UNIFIED_CHROMA
-from ..retrieval.vector import VectorStore
 
 log = get_logger(__name__)
 
@@ -18,7 +17,7 @@ def empty_store_result() -> QueryResult:
 
 def ensure_store_ready() -> QueryResult | None:
     """向量库为空时返回拒答结果，否则返回 None 表示可继续 ReAct / query。"""
-    if VectorStore(chroma_path=UNIFIED_CHROMA).count() == 0:
+    if total_vector_count() == 0:
         log.error("query.empty_store", hint="run --ingest first")
         return empty_store_result()
     return None

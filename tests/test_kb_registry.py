@@ -21,9 +21,10 @@ def test_registry_has_three_kbs():
     assert ids == {"policies", "tabular", "pdf"}
 
 
-def test_merge_options_adds_kb_filter():
+def test_merge_options_physical_kb_no_metadata_filter():
+    """物理分库：检索直连 KB 索引，不再用 metadata_filter 限定 kb。"""
     opts = merge_retrieval_options(None, "tabular")
-    assert opts.metadata_filter["kb"] == "tabular"
+    assert "kb" not in opts.metadata_filter
     assert get_kb("tabular").profile.retrieval.expand_parent is False
 
 
