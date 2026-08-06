@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from unittest.mock import patch
+
 from rag_assistant.ingest.chunking import chunk_by_heading_info
 from rag_assistant.ingest.loaders import Document
 from rag_assistant.query.preprocess.decompose import _parse_subqueries
@@ -95,3 +97,13 @@ def test_parse_subqueries_json():
     subs = _parse_subqueries('["会议室怎么订？", "打印机怎么用？"]', "fallback")
     assert len(subs) == 2
     assert "会议室" in subs[0]
+
+
+def test_embedding_dimension_uses_vector_length():
+    with patch(
+        "rag_assistant.retrieval.embeddings.embed_documents",
+        return_value=[[0.1, 0.2, 0.3]],
+    ):
+        from rag_assistant.retrieval.embeddings import embedding_dimension
+
+        assert embedding_dimension() == 3

@@ -37,4 +37,7 @@ def embed_documents(texts: list[str]) -> list[list[float]]:
 
 
 def embedding_dimension() -> int:
-    return len(embed_documents(["dimension probe"]))
+    vecs = embed_documents(["dimension probe"])
+    if not vecs:
+        raise ValueError("embedding API returned no vectors")
+    return len(vecs[0])
