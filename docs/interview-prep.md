@@ -8,31 +8,31 @@
 
 ## 能力快照（面试前核对数字）
 
-| 项 | 当前值（截至 2026-08-02） |
+| 项 | 当前值（截至 2026-08-16） |
 |----|---------------------------|
 | 场景 | 虚构「星云科技」内部制度 / FAQ / 通讯录 / PDF 手册问答 |
 | 语料规模 | 约 13 篇文档（MD/HTML/CSV/PDF）→ **65** 个文本块 |
-| 知识库 | 逻辑三库：policies / tabular / pdf（统一 Chroma + BM25，`kb` 元数据过滤） |
+| 知识库 | 三库 policies / tabular / pdf；**物理分库**（每 KB 独立向量 collection / BM25 索引）+ Profile |
+| 存储 | 向量 `qdrant\|chroma`；关键词 `opensearch\|pkl`；CI 默认 Chroma + pkl |
+| 入库 | 默认 `--ingest` **增量**（`doc_id` + `file_hash`）；`--reset` 全量 |
 | 回归题集 | **34** 道人工题（含 **3** 道「库外应拒答」） |
 | 答案通过率 | **34/34**（`run.py`：检索 + `produce_answer`） |
 | 检索召回 | **31/31**（前 4 条是否命中期望文档；3 道拒答题不计） |
 | 路由选型 | **6/6**（`run_routing.py`：`--agent` 单库工具选型） |
 | ReAct 端到端 | **6/7**（`run_react.py`，7 题子集） |
-| 单测 | **45** passed |
+| 单测 | **51** collected（默认 Chroma + pkl，含增量入库） |
 | 检索方案对照 | 纯向量 / 混合 / 混合+重排，在本题集上分数相同 |
-| **默认演示 / 产品路径** | **`--react` ReAct**（多工具、Agent 综合 Observation 写答案） |
+| **默认演示 / 产品路径** | **`--react` ReAct**（CLI 与 Gradio 一致） |
 | 辅助路径 | `--query` 全库直连 RAG（eval 底座）；`--agent` 路由单库（理解对照） |
 | 多轮 | 有对话历史时才用便宜模型改写问句；单轮不改写 |
-
-| ReAct 端到端 golden | `run_react.py` **6/7**（7 题子集；主 eval `run.py` 仍测直连 RAG） |
 
 ---
 
 ## 已实现 vs 未实现
 
-**已做完的**：入库（含 PDF）、**逻辑多库 + Profile**、混合检索、重排、带来源的回答、规则+模型两层拒答、多轮改写、**Agent 工具路由（`--agent`）**、**ReAct 多工具（`--react`，主路径）**、命令行演示、可观测、可重复评测。
+**已做完的**：入库（含 PDF）、**物理分库 + Profile**、**可切换存储**（Qdrant/Chroma、OpenSearch/pkl）、**增量入库**、混合检索、重排、带来源的回答、规则+模型两层拒答、多轮改写、**Agent 工具路由（`--agent`）**、**ReAct 多工具（`--react`，CLI 与 Gradio 主路径）**、可观测、可重复评测。
 
-**还没做的**（被问到如实说）：第 10 周生产存储（Qdrant/OpenSearch）、第 11 周 Graph RAG（Neo4j）、扩大 ReAct golden、Ragas 自动化打分。
+**还没做的**（被问到如实说）：第 11 周 Graph RAG（Neo4j）、扩大 ReAct golden、Ragas 自动化打分、异步入库队列。
 
 ---
 
@@ -46,7 +46,7 @@
 
 这个项目模拟的是**企业内部知识助手**。员工用口语提问，系统从制度、FAQ、通讯录、PDF 手册等文档里找依据再回答，并且能说明**答案引自哪份文件**。
 
-离线阶段，我把 Markdown、网页、表格、PDF 读进来，按**知识库 Profile** 分块——制度按章节、表格按行、PDF 按页等——然后写入**统一向量库和 BM25 索引**，用 `kb` 标签区分逻辑库，而不是让用户手动选库。
+离线阶段，我把 Markdown、网页、表格、PDF 读进来，按**知识库 Profile** 分块——制度按章节、表格按行、PDF 固定窗口——然后写入**三个物理库**（每套 KB 自己的向量索引和 BM25）。默认增量入库：文件没改就跳过 embedding，改了整篇换掉，删了的从索引清掉。用户不用自己选库。
 
 在线阶段，默认走 **ReAct**：Agent 根据问题决定调用哪个 `search_*` 工具，必要时**连续查多个库**（比如制度 + 表格），每次工具只返回检索片段，由 Agent 读 Observation 后写最终答案。每条工具内部仍是 hybrid 召回 + rerank + 低分过滤。如果检索明显不靠谱，工具层会提示「未检索到」，Agent 可换库或拒答。
 
@@ -56,7 +56,9 @@
 
 在 1 分钟版上，补充**为什么这么设计**：
 
-**多库而不是单库**：企业语料类型差很多——制度是长文、通讯录是表格行、后勤是 PDF 手册。混在一起用同一套切块和检索参数，表格专名和 PDF 页码都容易吃亏。所以我用 Registry 定义三套逻辑库，各自 Profile（切块策略、是否父文档扩展），检索时用 metadata 只扫目标库；对外由 Agent 选工具，用户无感。
+**多库而不是单库**：企业语料类型差很多——制度是长文、通讯录是表格行、后勤是 PDF 手册。混在一起用同一套切块和检索参数，表格专名和 PDF 都容易吃亏。所以 Registry 里三套库，各自 Profile。早期是一个大索引加 `kb` 标签过滤；第 10 周改成**物理分库**，每个 KB 独立 collection / index，工具一选库就直连对应存储，召回阶段不用再扫全库再 filter。对外还是 Agent 选工具，用户无感。
+
+**增量入库**：以前改一个文件就要全量 embedding。现在文件没改就跳过；改了按整篇把旧块删掉再写（切块一变，旧 chunk id 对不上，按篇换更干净）；磁盘上删了的索引也清掉。向量和 BM25 一起做。`--reset` 还能全量重建。
 
 **ReAct 而不是只做路由 + 单库 RAG**：复合题「报销额度 + 打印机卡纸」往往跨库。`--agent` 路由只能选**一个**库，复合题容易只查一半就拒答；ReAct 允许 Agent **多轮调工具**，每轮换 query、换库，更接近真实办事流程。工具层统一约定**只返回片段、不调生成 LLM**，避免和 Agent 抢答。
 
@@ -66,7 +68,7 @@
 
 **评测分层**：答案 golden（34 题）、检索 recall@4（31 题）、路由（6 题）、ReAct 端到端（7 题，**6/7**）分开看。
 
-**局限**：题集仍小；ReAct eval 有 1 题已知 flake（复合 FAQ）；未上 Ragas / 图检索。
+**局限**：题集仍小；ReAct eval 有 1 题已知 flake（复合 FAQ）；未上 Ragas / 图检索；增量入库不是跨存储事务，写到一半挂了两边可能暂时对不齐。
 
 ---
 
@@ -103,7 +105,7 @@
 
 **A：**
 
-语料分三类：中文制度 Markdown 按**二级标题**切；CSV 通讯录按**行**切，方便工号精确匹配；PDF 手册按**页**或段落切。每类对应一个知识库 Profile，入库时打 `kb` 标签。
+语料分三类：中文制度 Markdown 按**标题**切；CSV 通讯录按**行**切，方便工号精确匹配；PDF 手册没有稳定标题，按**固定窗口**切（大约 800 字一块）。每类对应一个知识库 Profile，入库后进各自的物理索引。
 
 这样切是因为不同类型文档的「自然单位」不一样。制度按条款写，按标题切能保证每一块是一个完整主题；表格按行切，检索命中就是一整行记录；PDF 若按固定字符切，容易把操作步骤拦腰截断。
 
@@ -209,7 +211,7 @@ ReAct 会把**多次工具调用**的 chunks 合并后再建引用，所以复�
 
 **A：**
 
-理想上应该一套。目前**命令行主路径已是 `--react`**，但 **Gradio 网页仍走 `--query` 直连 RAG**，这是我刻意记在 backlog 里的——演示面试时我会用 CLI 的 `--react` 或 `--chat --react`，不会拿网页冒充主路径。切 UI 只是换入口函数，检索和工具层不用重写。
+已经是一套。CLI `--react` / `--chat --react` 和 Gradio 都走 `query_agent_react`，检索和工具层共用。`--query` 留给评测和对照实验。
 
 ---
 
@@ -219,7 +221,7 @@ ReAct 会把**多次工具调用**的 chunks 合并后再建引用，所以复�
 
 **A：**
 
-用固定考卷，**一次只动一个变量**。改检索就只切 retrieve/rerank；改 Agent 就手测复合题 + 跑 routing；改入库就 `--ingest --reset` 后整包重跑。对照结果存成报告文件。
+用固定考卷，**一次只动一个变量**。改检索就只切 retrieve/rerank；改 Agent 就手测复合题 + 跑 routing；改语料就 `--ingest` 增量，切块或存储结构变了再用 `--reset` 全量。对照结果存成报告文件。
 
 **Q：** 测试失败了你怎么查？
 
@@ -249,7 +251,9 @@ ReAct 会把**多次工具调用**的 chunks 合并后再建引用，所以复�
 
 **A：**
 
-对用户是一个助手，对系统是多套语料类型。制度、表格、PDF 的最优切块和检索增强不一样——比如 policies 开父文档扩展，tabular 按行、强调 BM25。逻辑分库 + 统一物理索引，用 `kb` 过滤，是成本和隔离之间的折中：demo 阶段不必维护三套 Chroma，但检索行为可以分库调参。
+对用户是一个助手，对系统是多套语料类型。制度、表格、PDF 的最优切块和检索增强不一样——比如 policies 开父文档扩展，tabular 按行、更吃 BM25。
+
+早期是一个大索引加 `kb` 标签过滤，demo 好做。第 10 周改成物理分库：每个 KB 自己的 Qdrant collection（或 Chroma 目录）和 OpenSearch index（或 pkl）。Agent 选中 `search_policies`，检索就只打 policies 那一套库，不用先搜全库再 filter。隔离更好，也方便以后按库扩容。CI 仍可用 Chroma + pkl，生产切环境变量就行。
 
 **Q：** `--agent` 和 `--react` 有什么区别？为什么主路径选 ReAct？
 
@@ -285,7 +289,39 @@ ReAct 会把**多次工具调用**的 chunks 合并后再建引用，所以复�
 
 ---
 
-### 场景 G：难点与反思
+### 场景 G：存储与增量入库（第 10 周）
+
+**Q：** 向量库和关键词索引现在怎么存？
+
+**A：**
+
+两套都能切。向量默认可以走本地 Chroma，生产切 `VECTOR_BACKEND=qdrant`；关键词默认 `bm25.pkl`，生产切 `BM25_BACKEND=opensearch`。检索接口一样，hybrid + RRF 行为不变。Docker 里 Qdrant、OpenSearch、Neo4j 一起起，Neo4j 业务要到第 11 周才接。
+
+每个知识库是独立索引，不是一个大库打标签。CI 没有 Docker，单测仍用 Chroma + pkl。
+
+**Q：** 增量入库是怎么做的？为什么不按 chunk 更新？
+
+**A：**
+
+磁盘当准，索引跟着变。每篇文件两个值：路径算出 `doc_id`（这是哪篇），文件字节算出 `file_hash`（有没有改）。对照索引里已有的指纹：没改的跳过，连 embedding 都不跑；新文件或内容变了的写入；索引有、磁盘没了的删掉。
+
+内容变了要先按 `doc_id` 把这篇旧块全删再写。因为切块数量、每段正文都会变，chunk id 还带了正文哈希，你手里只有新 id，不知道旧的哪些该删。按文档整篇换最干净。新文件也走同一条「先删再写」，库里没有就是空删。
+
+按 chunk 做差集也行，得先把这篇在索引里的旧 chunk id 查出来再加减。大文件只改一小节时能少 embed，但固定窗口一切错位，几乎整篇都变，划不来。我们语料不大，按文档够用。
+
+向量库和 BM25 必须一起删一起写，不然两边对不齐。第一次从旧全量索引升级，没有 `doc_id` 的遗留块会先清掉再按新格式写入。
+
+**Q：** 文件改名了怎么办？写到一半挂了呢？
+
+**A：**
+
+路径变了 `doc_id` 就变了，旧路径当删除，新路径当新文件。这是用路径当身份的代价，以后要稳定可以换成业务文档 ID。
+
+现在不是跨存储事务，向量写完 BM25 挂了会对不齐，这是缺口。生产要补重试或对账。`--only` 只同步一个语料包时，删除范围也只限这个包，避免把没加载的包当成磁盘删除。
+
+---
+
+### 场景 H：难点与反思
 
 **Q：** 印象最深的难点是什么？
 
@@ -301,9 +337,9 @@ ReAct 会把**多次工具调用**的 chunks 合并后再建引用，所以复�
 
 短期：扩大 ReAct golden；更难复合题。
 
-后期（第 10–12 周）：第 10 周生产存储改造；第 11 周 Graph RAG（Neo4j + `query_relations`）；第 12 周多模态 + CRAG。
+接下来（第 11–12 周）：Graph RAG（Neo4j + `query_relations`）；多模态 + CRAG。
 
-长期工程化：题集扩大、Ragas 或人工评审、物理分库/托管向量库——按 `production-gap.md` 的触发条件来，不提前过度设计。
+长期工程化：题集扩大、Ragas、入库队列和失败重试——增量现在是同步命令，还不是生产任务系统。按 `production-gap.md` 的触发条件来，不提前过度设计。
 
 ---
 
@@ -325,6 +361,9 @@ ReAct 会把**多次工具调用**的 chunks 合并后再建引用，所以复�
 | ReAct 端到端 eval | `tests/eval/run_react.py` + `data/eval/react_golden.json`（7 题，6/7） |
 | KB 工具 | `kb/search.py`：`build_kb_tools`、`run_kb_retrieve`、`format_chunks_observation` |
 | 知识库注册 | `kb/registry.py`（policies / tabular / pdf） |
+| 物理分库工厂 | `retrieval/vector_store.py`、`retrieval/bm25_store.py`（按 `kb_id`） |
+| 增量指纹 | `ingest/fingerprint.py`：`document_id` / `content_hash` |
+| 增量同步 | `ingest/run._sync_kb`：跳过 / upsert / 按 `doc_id` 删除 |
 | 路由选型（辅助） | `query/modes/agent_route/select.select_tool_names` |
 | 直连 RAG（eval） | `query/modes/direct.py` |
 | 检索入口 | `query/retrieve.py` → `retrieval/engine.retrieve_with_options` |
@@ -337,7 +376,8 @@ ReAct 会把**多次工具调用**的 chunks 合并后再建引用，所以复�
 
 ```bash
 uv sync --extra dev --extra ui
-uv run python -m rag_assistant.pipeline --ingest --reset   # 首次或语料变更后
+uv run python -m rag_assistant.pipeline --ingest --reset   # 首次全量
+uv run python -m rag_assistant.pipeline --ingest           # 之后增量：未改跳过
 
 # 主路径：ReAct
 uv run python -m rag_assistant.pipeline --react --query "年假有多少天？怎么折现？"
@@ -371,6 +411,7 @@ uv run python tests/eval/run_react.py
 | 2026-07-30 | 评测追问补充考卷/报告内容与 FAIL 分诊示例 |
 | 2026-07-30 | **模拟面试改为口语化 Q/A** |
 | 2026-08-02 | **第 9 周收尾**：`run_react.py` 6/7、Gradio ReAct、learning-log 归档 |
+| 2026-08-16 | **第 10 周收尾**：Qdrant/OpenSearch 可切换、物理分库、增量 ingest；口述同步（Gradio 已是 ReAct） |
 
 ### 新功能迭代时更新清单
 
