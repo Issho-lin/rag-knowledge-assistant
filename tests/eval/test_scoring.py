@@ -1,6 +1,6 @@
 """eval 打分纯函数单测（不调 LLM）。运行：pytest tests/eval/test_scoring.py -q"""
 
-from tests.eval.scoring import score_answer, score_recall
+from tests.eval.scoring import score_answer, score_react_tools, score_recall
 
 
 def test_space_insensitive_keyword():
@@ -26,3 +26,20 @@ def test_recall_hit_and_miss():
 
     miss = score_recall(chunks, {"expected_sources": ["员工通讯录-摘录.csv"]})
     assert miss is not None and miss["recall_hit"] is False
+
+
+def test_react_tools_single_and_multi():
+    single = score_react_tools("search_tabular", {"expected_tool": "search_tabular"})
+    assert single is not None and single["tools_hit"] is True
+
+    multi = score_react_tools(
+        "search_policies,search_pdf_handbook",
+        {"expected_tools": ["search_policies", "search_pdf_handbook"]},
+    )
+    assert multi is not None and multi["tools_hit"] is True
+
+    partial = score_react_tools(
+        "search_policies",
+        {"expected_tools": ["search_policies", "search_pdf_handbook"]},
+    )
+    assert partial is not None and partial["tools_hit"] is False

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from rag_assistant.refusal import is_refusal, normalize_for_match
+from rag_assistant.answer.refusal import is_refusal, normalize_for_match
 
 
 def normalize(text: str) -> str:
@@ -53,6 +53,44 @@ def score_answer(answer: str, item: dict) -> dict:
         "keyword_score": round(ratio, 3),
         "refuse_ok": refuse_ok,
         "passed": passed,
+    }
+
+
+def score_routing(tool_names: list[str], item: dict) -> dict | None:
+    """路由评测：expected_tool 是否与首个选中工具一致。"""
+    expected = item.get("expected_tool")
+    if not expected:
+        return None
+    selected = tool_names[0] if tool_names else None
+    return {
+        "expected_tool": expected,
+        "selected_tool": selected,
+        "routing_hit": selected == expected,
+    }
+
+
+def score_react_tools(routed_tool: str | None, item: dict) -> dict | None:
+    """ReAct 端到端：检查 ``routed_tool`` 是否命中 expected_tool / expected_tools。"""
+    expected_many = item.get("expected_tools")
+    if expected_many:
+        selected = {t.strip() for t in (routed_tool or "").split(",") if t.strip()}
+        miss = [t for t in expected_many if t not in selected]
+        return {
+            "expected_tools": expected_many,
+            "routed_tool": routed_tool,
+            "tools_hit": len(miss) == 0,
+            "tools_miss": miss,
+        }
+    expected = item.get("expected_tool")
+    if not expected:
+        return None
+    selected = {t.strip() for t in (routed_tool or "").split(",") if t.strip()}
+    hit = expected in selected
+    return {
+        "expected_tool": expected,
+        "routed_tool": routed_tool,
+        "tools_hit": hit,
+        "tools_miss": [] if hit else [expected],
     }
 
 

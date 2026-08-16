@@ -13,7 +13,7 @@ from pathlib import Path
 
 import trafilatura
 
-from ..logging import get_logger
+from ..core.logging import get_logger
 
 log = get_logger(__name__)
 
@@ -95,8 +95,22 @@ def load_csv(path: Path) -> Document:
     )
 
 
+def load_pdf(path: Path) -> Document:
+    """PDF 抽文本（pypdf）；扫描件需 OCR，本期不覆盖。"""
+    from pypdf import PdfReader
+
+    reader = PdfReader(str(path))
+    pages = [(p.extract_text() or "").strip() for p in reader.pages]
+    text = "\n\n".join(p for p in pages if p)
+    return Document(
+        text=text,
+        source=str(path),
+        metadata={"kind": "pdf", "name": path.stem},
+    )
+
+
 def load_corpus(root: Path) -> list[Document]:
-    """加载语料根目录下 markdown/、html/、csv/ 中的全部文件。"""
+    """加载语料根目录下 markdown/、html/、csv/、pdf/ 中的全部文件。"""
     root = Path(root)
     if not root.is_dir():
         raise FileNotFoundError(f"语料目录不存在: {root}")
@@ -116,6 +130,11 @@ def load_corpus(root: Path) -> list[Document]:
     if csv_dir.is_dir():
         for path in sorted(csv_dir.rglob("*.csv")):
             docs.append(load_csv(path))
+
+    pdf_dir = root / "pdf"
+    if pdf_dir.is_dir():
+        for path in sorted(pdf_dir.rglob("*.pdf")):
+            docs.append(load_pdf(path))
 
     log.info("ingest.load_corpus", root=str(root), count=len(docs))
     return docs

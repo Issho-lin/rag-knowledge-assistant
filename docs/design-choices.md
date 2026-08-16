@@ -99,3 +99,54 @@
 | Eval / golden set | 用数字验证改动，避免「感觉变好了」 |
 
 加这些时同样会先讲清理由，再改代码——不会先上一个明知更差的版本。
+
+---
+
+## 8. 检索增强：过滤 + 子查询分解 + 父文档扩展
+
+**方案**：子查询分解 / 父文档扩展做成可插拔模块；**低分过滤与拒答共用 `REFUSE_MIN_RERANK_SCORE`**。
+
+| 能力 | 实现 | 日后归属 |
+|------|------|----------|
+| **低分过滤 + 拒答** | rerank 后**全部候选**低于阈值则丢弃；滤空 → 拒答 | COMMON_PROFILE |
+| **元数据过滤（`kb` 等）** | Chroma `where` + BM25 子集在**召回阶段**下推；`filter_chunks` 二次校验 | `--kb` / Profile |
+| **子查询分解** | cheap LLM 拆复合问句 → 多路检索 → RRF 合并 | COMMON_PROFILE |
+| **父文档扩展** | 切块时存 `parent_text`；命中子块时扩展为整节 | COMMON_PROFILE |
+
+| | |
+|--|--|
+| **为什么合并阈值** | 原方案「top-1 拒答 + 尾巴低分仍喂 LLM」有洞；统一阈值更简单，一个旋钮 |
+| **好处** | 语义一致；去掉 `RETRIEVAL_MIN_SCORE`；滤空即拒答，不重复看 top-1 |
+| **未 rerank 时** | 仍用 `REFUSE_MIN_VECTOR_SCORE` 只看 top-1（RRF 分不可比） |
+
+**验收**：`uv run python tests/eval/compare.py --suite enhanced`；父文档扩展需先 `--ingest --reset`。
+
+---
+
+## 10. Agent：工具只检索 + 两条编排路径
+
+**方案**（第 9 周）：
+
+| 路径 | 行为 |
+|------|------|
+| **ReAct**（`--react`，推荐用户入口） | `create_agent` 循环调用 `search_*` 工具；工具返回片段 Observation；Agent 写最终答案 |
+| **路由 Agent**（`--agent`，对照/评测） | cheap LLM 选 **1** 个工具 → `run_kb_retrieve` → `produce_answer` |
+| **直连**（`--query`，评测基线） | 全库或 `--kb` → `retrieve_chunks` → `produce_answer` |
+
+| | |
+|--|--|
+| **为什么工具不内含 generate** | 与 LangChain ReAct 惯例一致；复合题由 Agent 拆库拆问，避免每 tool 一次 LLM |
+| **为什么仍保留 `--agent`** | 路由 golden（`run_routing.py`）、单库低成本对照；不必作为用户双模式之一 |
+| **并行 tool 注意** | 本地 rerank 非线程安全；`rerank.py` 使用 `RLock` |
+
+---
+
+## 9. 与业界落地的差距（教学简化 vs 生产默认）
+
+练习仓库 deliberately 采用可跑通的最小实现（如 BM25 全库打分、Chroma 本地单库、pypdf 直抽）。**不等于**生产最佳实践。
+
+| | |
+|--|--|
+| **为什么单独成文** | 学本项目既要会改代码，也要知道「没实现的那一半」叫什么、何时该上 |
+| **写什么** | 分模块：我们现在 / 业界常见 / 何时升级；含 **易漏讲清单**、**逻辑 vs 物理分库**（§2.3.1）、**Chroma vs 生产向量库**（§2.3.2）、P0–P2 路线图 |
+| **去哪看** | [`docs/production-gap.md`](./production-gap.md) |

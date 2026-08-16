@@ -19,10 +19,12 @@ _ROOT = _EVAL_DIR.parents[1]
 if str(_EVAL_DIR) not in sys.path:
     sys.path.insert(0, str(_EVAL_DIR))
 
-from rag_assistant.config import get_settings
-from rag_assistant.generation import produce_answer
-from rag_assistant.logging import configure_logging, get_logger
-from rag_assistant.pipeline import retrieve_chunks
+from rag_assistant.core.config import get_settings
+from rag_assistant.answer import produce_answer
+from rag_assistant.core.logging import configure_logging, get_logger
+from rag_assistant.query.retrieve import retrieve_chunks
+from rag_assistant.retrieval.options import RetrievalOptions
+from rag_assistant.retrieval.vector import VectorStore
 
 from scoring import score_answer, score_recall
 
@@ -30,6 +32,10 @@ log = get_logger(__name__)
 
 _GOLDEN = _ROOT / "data/eval/golden.json"
 _RESULTS_DIR = _ROOT / "data/eval/results"
+_CHROMA_PATH = _ROOT / "data/chroma/unified"
+_EMPTY_STORE_MSG = (
+    "知识库为空。请先执行：python -m rag_assistant.pipeline --ingest --reset"
+)
 
 
 def run(
@@ -39,19 +45,32 @@ def run(
     retrieve: str = "hybrid",
     use_rerank: bool | None = None,
     tag: str | None = None,
+    retrieval_options: RetrievalOptions | None = None,
+    default_kb: str | None = None,
 ) -> Path:
     configure_logging()
     items = json.loads(_GOLDEN.read_text(encoding="utf-8"))
     if limit is not None:
         items = items[:limit]
 
+    store_empty = VectorStore(chroma_path=_CHROMA_PATH).count() == 0
+
     rows: list[dict] = []
     for i, item in enumerate(items, 1):
         q = item["question"]
-        print(f"\n[{i}/{len(items)}] {item['id']}: {q}")
-        chunks = retrieve_chunks(q, k=k, retrieve=retrieve, use_rerank=use_rerank)
-        if not chunks:
-            answer = "知识库为空。请先执行：python -m rag_assistant.pipeline --ingest --reset"
+        kb_id = default_kb if default_kb is not None else item.get("kb")
+        kb_label = f" [kb={kb_id}]" if kb_id else ""
+        print(f"\n[{i}/{len(items)}] {item['id']}: {q}{kb_label}")
+        chunks = retrieve_chunks(
+            q,
+            k=k,
+            retrieve=retrieve,
+            use_rerank=use_rerank,
+            options=retrieval_options,
+            kb_id=kb_id,
+        )
+        if store_empty:
+            answer = _EMPTY_STORE_MSG
         else:
             do_rerank = (
                 get_settings().rerank_enabled if use_rerank is None else use_rerank
@@ -62,6 +81,7 @@ def run(
         row = {
             "id": item["id"],
             "question": q,
+            "kb": kb_id,
             "answer": answer,
             **scored,
         }
@@ -96,6 +116,16 @@ def run(
         "created_at": datetime.now(timezone.utc).isoformat(),
         "retrieve": retrieve,
         "use_rerank": use_rerank,
+        "default_kb": default_kb,
+        "retrieval_options": (
+            {
+                "decompose": retrieval_options.decompose,
+                "expand_parent": retrieval_options.expand_parent,
+                "metadata_filter": retrieval_options.metadata_filter,
+            }
+            if retrieval_options
+            else None
+        ),
         "k": k,
         "tag": label,
         "n": n,
@@ -152,6 +182,13 @@ def main() -> None:
         help="强制关闭重排",
     )
     parser.add_argument("--tag", type=str, default=None, help="结果文件名前缀")
+    parser.add_argument(
+        "--kb",
+        type=str,
+        default=None,
+        choices=("policies", "tabular", "pdf"),
+        help="强制所有题目在该 KB 内检索（覆盖 golden 单条 kb 字段）",
+    )
     args = parser.parse_args()
     run(
         limit=args.limit,
@@ -159,6 +196,7 @@ def main() -> None:
         retrieve=args.retrieve,
         use_rerank=args.use_rerank,
         tag=args.tag,
+        default_kb=args.kb,
     )
 
 

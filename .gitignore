@@ -5,6 +5,9 @@
 # vector index (rebuild with --ingest)
 data/chroma/
 
+# relation graph index (rebuild with --ingest-graph)
+data/index/
+
 # eval 跑分结果（golden.json 保留进库）
 data/eval/results/
 

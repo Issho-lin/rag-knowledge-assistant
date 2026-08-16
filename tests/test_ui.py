@@ -1,8 +1,8 @@
 """Gradio UI 格式化逻辑单测（不启动 Web）。"""
 
-from rag_assistant.generation import Citation
-from rag_assistant.pipeline import QueryResult
-from rag_assistant.refusal import RefusalReason
+from rag_assistant.answer import Citation
+from rag_assistant.query.result import QueryResult
+from rag_assistant.answer.refusal import RefusalReason
 from rag_assistant.ui import format_result_detail
 
 

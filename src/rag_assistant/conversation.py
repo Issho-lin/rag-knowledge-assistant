@@ -22,7 +22,7 @@ def trim_history(
     *,
     max_messages: int = MAX_HISTORY_MESSAGES,
 ) -> list[ChatTurn]:
-    """只保留最近若干条，供改写与展示。"""
+    """只保留最近若干条历史记录，供改写与展示使用。"""
     if not history:
         return []
     if max_messages <= 0:

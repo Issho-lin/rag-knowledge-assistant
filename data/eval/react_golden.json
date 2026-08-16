@@ -1,0 +1,60 @@
+[
+  {
+    "id": "react-tabular-xy003",
+    "question": "工号 XY003 是谁？分机多少？",
+    "must_contain": ["周凯", "8002"],
+    "expected_sources": ["员工通讯录-摘录.csv"],
+    "expected_tool": "search_tabular",
+    "expect_refuse": false,
+    "notes": "ReAct：专名 + 表格库"
+  },
+  {
+    "id": "react-pdf-printer",
+    "question": "办公打印机卡纸了应该怎么处理？",
+    "must_contain": ["侧盖", "8001"],
+    "expected_sources": ["10-办公设备操作手册.pdf"],
+    "expected_tool": "search_pdf_handbook",
+    "expect_refuse": false,
+    "notes": "ReAct：PDF 手册库"
+  },
+  {
+    "id": "react-policies-leave",
+    "question": "年假有多少天？怎么折现？",
+    "must_contain": ["5 天", "10 天", "15 天", "平均工资"],
+    "expected_sources": ["02-请假与考勤制度.md"],
+    "expected_tool": "search_policies",
+    "expect_refuse": false,
+    "notes": "ReAct：制度库"
+  },
+  {
+    "id": "react-admin-faq",
+    "question": "会议室怎么订？打印机怎么用？",
+    "must_contain": ["飞书日历", "Xingyun-Office"],
+    "expected_sources": ["06-FAQ-行政与日常.md"],
+    "expected_tool": "search_policies",
+    "expect_refuse": false,
+    "notes": "ReAct：单库复合问"
+  },
+  {
+    "id": "react-cross-kb",
+    "question": "差旅住宿标准是多少？办公打印机卡纸怎么处理？",
+    "must_contain": ["450", "侧盖"],
+    "expected_tools": ["search_policies", "search_pdf_handbook"],
+    "expect_refuse": false,
+    "notes": "ReAct：跨库复合问；routing 要求两个工具都出现"
+  },
+  {
+    "id": "react-oop-equity",
+    "question": "公司股票期权怎么行权？有没有回购条款？",
+    "must_contain": ["无法确认"],
+    "expect_refuse": true,
+    "notes": "ReAct：库外拒答"
+  },
+  {
+    "id": "react-oop-headcount",
+    "question": "公司明年头等舱差旅预算和编制扩招名额是多少？",
+    "must_contain": ["无法确认"],
+    "expect_refuse": true,
+    "notes": "ReAct：库外拒答"
+  }
+]

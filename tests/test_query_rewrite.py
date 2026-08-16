@@ -1,7 +1,7 @@
 """多轮 query 改写单测（不调用真实 LLM）。"""
 
 from rag_assistant.conversation import ChatTurn, format_history, trim_history
-from rag_assistant.query_rewrite import build_rewrite_messages, rewrite_for_retrieval
+from rag_assistant.query.preprocess.rewrite import build_rewrite_messages, rewrite_for_retrieval
 
 
 def test_trim_history_keeps_tail():
@@ -40,7 +40,7 @@ def test_rewrite_passthrough_without_history(monkeypatch):
         raise AssertionError("不应在无历史时调用 LLM")
 
     monkeypatch.setattr(
-        "rag_assistant.query_rewrite.LLMClient",
+        "rag_assistant.query.preprocess.rewrite.LLMClient",
         lambda: type("X", (), {"invoke": _fail})(),
     )
     assert rewrite_for_retrieval("年假有多少天？") == "年假有多少天？"

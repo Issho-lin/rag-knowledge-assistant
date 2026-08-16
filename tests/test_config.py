@@ -6,9 +6,9 @@
 
 import pytest
 
-from rag_assistant import config as config_module
-from rag_assistant.exceptions import NonRetryableLLMError, RetryableLLMError
-from rag_assistant.llm import LLMClient
+from rag_assistant.core import config as config_module
+from rag_assistant.core.exceptions import NonRetryableLLMError, RetryableLLMError
+from rag_assistant.core.llm import LLMClient
 
 
 @pytest.fixture

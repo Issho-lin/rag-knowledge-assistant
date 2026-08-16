@@ -1,6 +1,6 @@
 """来源引用：解析正文 [N] 与格式化来源块。"""
 
-from rag_assistant.generation import (
+from rag_assistant.answer import (
     build_citations,
     cited_indices,
     format_answer_with_sources,

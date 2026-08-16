@@ -10,13 +10,16 @@ dependencies = [
     # OpenAI 兼容 SDK。通义/DashScope/MaaS 通过 OPENAI_BASE_URL 接入，
     # 业务代码无感知具体厂商，只改 base_url 与模型名即可。
     "openai>=1.40",
+    "langchain>=1.3",                    # create_agent（--react ReAct 循环）
     "langchain-core>=0.3",
     "langchain-openai>=0.2",             # ChatOpenAI / OpenAIEmbeddings
     # --- RAG：切块 / 检索 / 重排 ---
     "rank-bm25>=0.2",                    # BM25 关键词检索（混合检索的一路）
     "sentence-transformers>=3.0",        # 本地重排（如 bge-reranker）与备选 embedding
     # --- 向量库 ---
-    "chromadb>=0.5",                     # 本地持久化向量库
+    "chromadb>=0.5",                     # CI / 离线 fallback
+    "qdrant-client>=1.9",                # 生产向量库（Phase 1）
+    "opensearch-py>=2.4",                # Phase 2 BM25
     # --- 文档加载（多类型语料）---
     "pypdf>=4.0",                        # PDF
     "trafilatura>=1.12",                 # HTML → 正文清洗
@@ -33,6 +36,7 @@ dependencies = [
     "colorama>=0.4.6",
     "ipykernel>=7.3.0",
     "modelscope>=1.38.1",
+    "pymupdf>=1.28.0",
 ]
 
 [project.optional-dependencies]
@@ -43,6 +47,10 @@ dev = [
 ]
 ui = [
     "gradio>=5.0",
+]
+# LangChain 版 loader 对照实现（ingest/loaders_lc.py）
+prod = [
+    "neo4j>=5.0",                        # Phase 11 Graph RAG
 ]
 # LangChain 版 loader 对照实现（ingest/loaders_lc.py）
 lc = [
