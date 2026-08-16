@@ -22,9 +22,9 @@ if str(_EVAL_DIR) not in sys.path:
 from rag_assistant.core.config import get_settings
 from rag_assistant.answer import produce_answer
 from rag_assistant.core.logging import configure_logging, get_logger
+from rag_assistant.kb.storage import total_vector_count
 from rag_assistant.query.retrieve import retrieve_chunks
 from rag_assistant.retrieval.options import RetrievalOptions
-from rag_assistant.retrieval.vector import VectorStore
 
 from scoring import score_answer, score_recall
 
@@ -32,7 +32,6 @@ log = get_logger(__name__)
 
 _GOLDEN = _ROOT / "data/eval/golden.json"
 _RESULTS_DIR = _ROOT / "data/eval/results"
-_CHROMA_PATH = _ROOT / "data/chroma/unified"
 _EMPTY_STORE_MSG = (
     "知识库为空。请先执行：python -m rag_assistant.pipeline --ingest --reset"
 )
@@ -53,7 +52,7 @@ def run(
     if limit is not None:
         items = items[:limit]
 
-    store_empty = VectorStore(chroma_path=_CHROMA_PATH).count() == 0
+    store_empty = total_vector_count() == 0
 
     rows: list[dict] = []
     for i, item in enumerate(items, 1):
@@ -112,8 +111,11 @@ def run(
         else ("norerank" if use_rerank is False else "rerank-default")
     )
     label = tag or f"{retrieve}_{rerank_label}"
+    settings = get_settings()
     summary = {
         "created_at": datetime.now(timezone.utc).isoformat(),
+        "vector_backend": settings.vector_backend,
+        "bm25_backend": settings.bm25_backend,
         "retrieve": retrieve,
         "use_rerank": use_rerank,
         "default_kb": default_kb,
@@ -143,6 +145,7 @@ def run(
     out.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
 
     print("\n======== eval summary ========")
+    print(f"backend: {settings.vector_backend} / {settings.bm25_backend}")
     print(f"pass: {n_pass}/{n} ({summary['pass_rate']})")
     print(f"avg keyword score: {summary['avg_keyword_score']}")
     if recall_rate is not None:

@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 from rag_assistant.core import config as config_module
 from rag_assistant.ingest.fingerprint import content_hash, document_id
 from rag_assistant.ingest.run import ingest
+from rag_assistant.kb.storage import total_vector_count
 from rag_assistant.retrieval.bm25 import BM25Store
 from rag_assistant.retrieval.bm25_store import create_bm25_store
 from rag_assistant.retrieval.opensearch_bm25 import OpenSearchBM25Store
@@ -97,6 +98,7 @@ def test_ingest_skips_unchanged_upserts_and_deletes(mock_embed, monkeypatch, tmp
     n_after_first = policies.count()
     assert n_after_first >= 2
     assert bm25.count() == n_after_first
+    assert total_vector_count() == n_after_first
 
     mock_embed.reset_mock()
     ingest()

@@ -24,13 +24,13 @@
 
 ---
 
-## 当前进度快照（2026-08-15）
+## 当前进度快照（2026-08-16）
 
 | 维度 | 状态 |
 |------|------|
 | **Git 分支** | `production-storage-upgrade` |
-| **单测** | 默认 `VECTOR_BACKEND=chroma` + `BM25_BACKEND=pkl`（CI 无 Docker） |
-| **整体完成度** | 第 10 周 **5/5 Phase 代码完成**（Qdrant / OpenSearch / 物理分库 / 增量 ingest） |
+| **单测** | `pytest tests/ --ignore=tests/eval`：**51 passed**（增量 ingest 强制 Chroma+pkl；不连 Docker） |
+| **整体完成度** | 第 10 周 **5/5 Phase + 本地验收** |
 
 **已交付**
 
@@ -39,7 +39,17 @@
 - 物理分库：每 KB 独立 collection / index
 - 增量入库：`doc_id` + `file_hash`；默认 `--ingest` 跳过未改文件；`--reset` 全量重建
 
-**你的下一步**：本地用 Qdrant + OpenSearch 跑通 ingest / query 后进入第 11 周 Graph RAG
+**本地验收（2026-08-16，`.env` = qdrant + opensearch）**
+
+| 项 | 结果 |
+|----|------|
+| `docker compose ps` | qdrant / opensearch / neo4j **healthy** |
+| `--ingest --reset` | 14 篇 → **72** chunk（policies=63, tabular=1, pdf=8）；向量/BM25 计数对齐 |
+| `--react --query "年假有多少天？"` | 选 `search_policies`，答对司龄档位 |
+| golden `run.py` | **33/34** pass；**recall@4 31/31**；1 题 `release-window` 生成漏「双人复核」（检索已命中） |
+| routing `run_routing.py` | **6/6** |
+
+**下一步**：第 11 周 Graph RAG（[`week11-graph-rag.md`](./week11-graph-rag.md)）
 
 ---
 
@@ -90,7 +100,7 @@ uv run pytest tests/ -q --ignore=tests/eval
 
 - [x] `VECTOR_BACKEND=qdrant|chroma` 可切换
 - [x] ingest / 检索代码已接入
-- [ ] **你本地跑通上面四条命令**
+- [x] **本地跑通上面四条命令**（2026-08-16）
 - [x] CI 默认 `chroma`（无 Docker 可跑单测）
 
 ---
@@ -99,7 +109,7 @@ uv run pytest tests/ -q --ignore=tests/eval
 
 - [x] `BM25_BACKEND=opensearch|pkl` 可切换
 - [x] hybrid RRF 行为不变；`kb` filter 在 OS 查询下推
-- [x] golden / routing eval 仍通过
+- [x] golden / routing eval：Qdrant+OS 上 recall **31/31**、routing **6/6**；答案 **33/34**（见上表）
 
 ---
 

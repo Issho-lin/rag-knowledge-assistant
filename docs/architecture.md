@@ -111,13 +111,13 @@ rag-react-query
 └── agent-react（工具内检索无单独 produce_answer span）
 ```
 
-## Eval 基线（2026-08-02）
+## Eval 基线（2026-08-16，Qdrant + OpenSearch）
 
 | 套件 | 指标 |
 |------|------|
-| `tests/eval/run.py`（检索 + produce_answer） | golden **34/34**，recall@4 **31/31** |
+| `tests/eval/run.py`（检索 + produce_answer） | golden **33/34**，recall@4 **31/31** |
 | `tests/eval/run_routing.py`（`--agent` 选型） | routing **6/6** |
-| 单测 | **44** passed |
+| 单测 | **51** passed（`--ignore=tests/eval`） |
 
 三路检索对照（vector / hybrid / hybrid+rerank）：`tests/eval/compare.py`。
 

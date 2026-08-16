@@ -6,8 +6,8 @@
 
 | 优先级 | 文档 | 什么时候看 |
 |--------|------|------------|
-| **1** | [`docs/production-upgrade.md`](docs/production-upgrade.md) | **第 10 周**（当前）：Qdrant + OpenSearch |
-| **1b** | [`docs/week11-graph-rag.md`](docs/week11-graph-rag.md) | **第 11 周**：Graph RAG（Neo4j） |
+| **1** | [`docs/week11-graph-rag.md`](docs/week11-graph-rag.md) | **第 11 周（当前）**：Graph RAG（Neo4j） |
+| **1b** | [`docs/production-upgrade.md`](docs/production-upgrade.md) | 第 10 周已验收：Qdrant + OpenSearch |
 | **2** | [`docs/production-gap.md`](docs/production-gap.md) §1 | demo vs 生产对照 |
 | **3** | 本文 README | 跑起来、命令、目录结构 |
 
@@ -25,15 +25,14 @@
 
 员工用自然语言问内部问题；系统从多库语料 **混合检索 + 重排** 后作答，带引用；低置信度 **拒答**；支持 **多轮改写**、**Agent 工具路由** 与 **ReAct**。
 
-## 当前：第 10 周（生产存储改造）
+## 当前：第 10 周已验收（生产存储）
 
 | 能力 | 说明 |
 |------|------|
-|------|------|
-| 语料 | `internal/`（MD/HTML/CSV）+ `kb_pdf/`（PDF） |
-| 多库 | KB Registry（policies / tabular / pdf）；逻辑分库 + Profile |
+| 语料 | `internal/`（MD/HTML/CSV）+ `kb_pdf/`（PDF）；约 14 篇 → 72 chunk |
+| 多库 | KB Registry（policies / tabular / pdf）；**物理分库** + Profile |
 | 入库 | 默认 `--ingest` 增量（`doc_id` + `file_hash`）；`--reset` 全量 |
-| 检索 | hybrid + RRF + rerank；KB 过滤在召回阶段下推 |
+| 检索 | hybrid + RRF + rerank；生产 Qdrant + OpenSearch，CI 用 Chroma + pkl |
 | 问答路径 | `--query` 直连 · `--agent` 路由单库 · **`--react` ReAct（主路径）** |
 | 界面 | CLI `--chat --react`；Gradio（ReAct） |
 

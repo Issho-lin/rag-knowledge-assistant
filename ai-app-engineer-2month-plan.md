@@ -115,7 +115,7 @@
 Qdrant/OpenSearch   query_relations           search_visual
 ```
 
-**当前进度（2026-08-04）**：第 1–**9** 周已完成；**当前 = 第 10 周生产存储改造**。  
+**当前进度（2026-08-16）**：第 1–**10** 周已完成并验收；**当前 = 第 11 周 Graph RAG**。  
 **第 10 周执行文档**：[`docs/production-upgrade.md`](docs/production-upgrade.md)（只看 Phase 进度表）。  
 **Demo vs 生产**：[`docs/production-gap.md`](docs/production-gap.md)。  
 **跑通与命令**：[`README.md`](README.md)。
@@ -456,7 +456,7 @@ Qdrant/OpenSearch   query_relations           search_visual
 | 第 6 周末 | 可演示；流程能脱稿讲；手册 = 过程实录（不凑数） |
 | 第 8 周末 | 多 KB + 多 Profile + Registry；PDF KB 可按 kb_id 正确检索 |
 | 第 9 周末 | Agent 经工具选 KB；路由专项 eval 通过（选对工具） |
-| 第 10 周末 | Qdrant + OpenSearch；分库或增量 ingest 至少一项；eval 通过 |
+| 第 10 周末 | Qdrant + OpenSearch；物理分库 + 增量 ingest；eval 通过 ✅ 2026-08-16：recall 31/31，routing 6/6，答案 33/34 |
 | 第 11 周末 | Neo4j 关系 KB + `query_relations`；路由对照 |
 | 第 12 周末 | 多模态 + CRAG 精简版；12 周总复盘 |
 

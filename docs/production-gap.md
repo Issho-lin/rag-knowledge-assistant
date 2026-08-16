@@ -10,9 +10,9 @@
 
 | 本项目用的 | 容易产生的错觉 | 生产里更常见 |
 |-----------|---------------|-------------|
-| **Chroma 本地文件** | 「向量库 = Chroma」 | **pgvector**、**Qdrant**、**Milvus**、OpenSearch kNN、云托管向量库 |
-| **`bm25.pkl` 单机文件** | 「BM25 就这样」 | **Elasticsearch / OpenSearch** 倒排索引 |
-| **逻辑分库 + `where`** | 「已经分库了」 | 多租户常 **物理分库**（§2.3.1） |
+| **Chroma 本地文件** | 「向量库只能是 Chroma」 | 生产路径已切 **Qdrant**；Chroma 仍作 CI/离线 fallback |
+| **`bm25.pkl` 单机文件** | 「BM25 就这样」 | 生产路径已切 **OpenSearch**；pkl 仍作 CI/离线 fallback |
+| **逻辑分库 + `where`** | 「已经分库了」 | **第 10 周已改物理分库**（每 KB 独立 collection / index） |
 | **全库 `get_scores` 再取 top-k** | 「BM25 实现没问题」 | 算法对，**工程形态**不对（§2.5） |
 | **本地 cross-encoder 重排** | 「重排都要自己下模型」 | 小规模可本地；规模化常用 **Cohere Rerank API** 等托管 |
 | **CLI 同步 ingest** | 「入库就是跑一条命令」 | 队列 + worker + 状态 API + 失败重试 |
@@ -29,10 +29,10 @@
 | 拒答 | 低置信度阈值 + prompt 拒答 + eval 共用规则 | — |
 | 可观测 | Langfuse 全链路 span | — |
 | 评测 | golden + keyword + recall@k + 多路对照 | 未上 Ragas / 人工评审流程 |
-| 多库 | KB Registry + Profile + `--kb` + **召回阶段 metadata 下推** | **逻辑分库**（单 Chroma + 单 BM25）；非物理隔离；无 Agent 自动选库 |
+| 多库 | KB Registry + Profile + **物理分库**（每 KB 独立 collection / index）；ReAct 选工具直连对应库 | 无多租户实例级隔离；无跨存储事务 |
 | 语料 ETL | 多格式 loader、按类型切块 | pypdf 直抽；无版面解析/OCR 管线 |
-| BM25 | 算法正确，小库够用 | **`bm25.pkl` 单机** + 全库 `get_scores`，非 ES 倒排 |
-| 向量库 | hybrid 召回思路对 | **Chroma 本地嵌入式**——学习/PoC 友好，**非严肃生产主力**（§2.3.2） |
+| BM25 | **OpenSearch**（生产）或 `bm25.pkl`（CI） | pkl 路径仍是全库 `get_scores`；无集群 HA |
+| 向量库 | **Qdrant**（生产）或 Chroma（CI/离线） | 单机 Docker，无副本/权限模型 |
 | 入库 | 默认同步增量 `--ingest`（`doc_id` + `file_hash`） | 无异步任务队列 |
 
 ---
@@ -241,9 +241,9 @@ data/chroma/policies/bm25.pkl
 | P2-2 | **多模态 KB** | 截图/幻灯；`search_visual` | 第 11 周 |
 | P2-3 | **CRAG / Self-RAG** | 挂在 Profile 上的纠错层，非另起系统 | 第 12 周 |
 | P2-4 | **HyDE / 查询扩展** | 某 Profile 内开关，before/after | 第 10–12 周可选 |
-| P2-5 | **物理分库** | 每 KB 独立向量 collection + 独立 BM25/ES 索引；registry 绑后端；工具直连物理索引 | 多租户隔离、不同 embedding、单库规模或独立发布 |
-| P2-6 | **替换向量库后端** | Chroma → **Qdrant / pgvector / Milvus**（改 `vector.py` 抽象层） | 上生产、要 HA/扩缩容/权限时 |
-| P2-7 | **ES/OpenSearch 统一检索** | BM25 + 向量 + filter 一个集群 | 运维希望少维护两套索引时 |
+| P2-5 | **物理分库** | 每 KB 独立向量 collection + 独立 BM25/OS 索引 | **第 10 周已做** |
+| P2-6 | **替换向量库后端** | Chroma → **Qdrant**（`VECTOR_BACKEND` 可切回 chroma） | **第 10 周已做** |
+| P2-7 | **ES/OpenSearch 统一检索** | 关键词侧已用 OpenSearch BM25；向量仍在 Qdrant（未做成 OS kNN 一体） | 运维希望少维护两套索引时 |
 | P2-8 | **异步 ingest 队列** | API 上传 → 后台解析/embed | 多用户上传时 |
 
 ### 暂不优先（知道即可）
