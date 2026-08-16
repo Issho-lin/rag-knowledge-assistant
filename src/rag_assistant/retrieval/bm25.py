@@ -70,12 +70,72 @@ class BM25Store:
         self._metadatas = (
             list(metadatas) if metadatas is not None else [{"source": s} for s in sources]
         )
-        # 更新BM25索引
+        self._commit()
+        log.info("bm25.rebuilt", path=str(self.path), count=len(self._docs))
+        return len(self._docs)
+
+    def upsert(
+        self,
+        ids: list[str],
+        docs: list[str],
+        sources: list[str],
+        *,
+        metadatas: list[dict[str, str | int]] | None = None,
+    ) -> int:
+        if not ids:
+            return 0
+        if not (len(ids) == len(docs) == len(sources)):
+            raise ValueError("ids/docs/sources 长度必须一致")
+        if metadatas is not None and len(metadatas) != len(docs):
+            raise ValueError("metadatas 长度必须与 docs 一致")
+        meta = list(metadatas) if metadatas is not None else [{"source": s} for s in sources]
+        self._ids.extend(ids)
+        self._docs.extend(docs)
+        self._sources.extend(sources)
+        self._metadatas.extend(meta)
+        self._commit()
+        log.info("bm25.upserted", path=str(self.path), added=len(ids), count=len(self._docs))
+        return len(ids)
+
+    def delete_by_doc_ids(self, doc_ids: list[str]) -> int:
+        drop = {d for d in doc_ids if d}
+        if not drop or not self._ids:
+            return 0
+        keep = [
+            i
+            for i, meta in enumerate(self._metadatas)
+            if str(meta.get("doc_id", "")) not in drop
+        ]
+        removed = len(self._ids) - len(keep)
+        if removed == 0:
+            return 0
+        self._ids = [self._ids[i] for i in keep]
+        self._docs = [self._docs[i] for i in keep]
+        self._sources = [self._sources[i] for i in keep]
+        self._metadatas = [self._metadatas[i] for i in keep]
+        self._commit()
+        log.info("bm25.deleted_by_doc_id", path=str(self.path), removed=removed)
+        return removed
+
+    def purge_unfingerprinted(self) -> int:
+        if not self._ids:
+            return 0
+        keep = [i for i, meta in enumerate(self._metadatas) if meta.get("doc_id")]
+        removed = len(self._ids) - len(keep)
+        if removed == 0:
+            return 0
+        self._ids = [self._ids[i] for i in keep]
+        self._docs = [self._docs[i] for i in keep]
+        self._sources = [self._sources[i] for i in keep]
+        self._metadatas = [self._metadatas[i] for i in keep]
+        self._commit()
+        log.info("bm25.purge_unfingerprinted", path=str(self.path), removed=removed)
+        return removed
+
+    def _commit(self) -> None:
         corpus = [tokenize(d) for d in self._docs]
         self._bm25 = BM25Okapi(corpus) if corpus else None
-        # 创建BM25索引路径
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        # 写入BM25索引
         self.path.write_bytes(
             pickle.dumps(
                 {
@@ -87,8 +147,6 @@ class BM25Store:
                 protocol=pickle.HIGHEST_PROTOCOL,
             )
         )
-        log.info("bm25.rebuilt", path=str(self.path), count=len(self._docs))
-        return len(self._docs)
 
     def query(
         self,

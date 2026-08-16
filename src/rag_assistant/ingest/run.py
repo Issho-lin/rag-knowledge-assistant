@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import shutil
 from collections import defaultdict
+from dataclasses import dataclass
 from pathlib import Path
 
 from ..core.config import get_settings
@@ -16,6 +17,7 @@ from ..retrieval.opensearch_bm25 import OpenSearchBM25Store
 from ..retrieval.metadata import build_chunk_metadata
 from ..retrieval.vector_store import create_vector_store
 from .chunking import chunk_document
+from .fingerprint import content_hash, document_id
 from .loaders import Document, load_corpus
 
 log = get_logger(__name__)
@@ -115,90 +117,167 @@ def _reset_vector_store() -> None:
             log.info("ingest.reset_chroma", path=str(path), kb=kb.id)
 
 
+@dataclass
+class _LiveDoc:
+    doc: Document
+    doc_id: str
+    file_hash: str
+    corpus: str
+    kb_id: str
+
+
+def _chunk_live_doc(live: _LiveDoc) -> dict[str, list]:
+    d = live.doc
+    kind = str(d.metadata.get("kind", ""))
+    profile = kb_profile_for_doc(d)
+    chunk_infos = chunk_document(d, profile.max_chars, profile.chunk_strategy)
+    batch: dict[str, list] = {"ids": [], "chunks": [], "sources": [], "metadatas": []}
+    for i, info in enumerate(chunk_infos):
+        batch["ids"].append(_chunk_id(d.source, info.text, i))
+        batch["chunks"].append(info.text)
+        batch["sources"].append(d.source)
+        batch["metadatas"].append(
+            build_chunk_metadata(
+                source=d.source,
+                kind=kind,
+                corpus=live.corpus,
+                kb=live.kb_id,
+                parent_text=info.parent_text,
+                chunk_index=info.chunk_index,
+                doc_id=live.doc_id,
+                file_hash=live.file_hash,
+            )
+        )
+    return batch
+
+
+def _sync_kb(
+    kb_id: str,
+    live_docs: dict[str, _LiveDoc],
+    *,
+    only: str | None,
+) -> tuple[int, int, int, int]:
+    """增量同步一个 KB。返回 (chunks_written, skipped_docs, upserted_docs, deleted_docs)。"""
+    store = create_vector_store(kb_id=kb_id)
+    bm25 = create_bm25_store(kb_id=kb_id)
+    store.purge_unfingerprinted()
+    bm25.purge_unfingerprinted()
+
+    indexed = store.list_doc_fingerprints()
+    if only is not None:
+        # only是指定的语料包名称
+        indexed_ids = {doc_id for doc_id, (_h, corpus) in indexed.items() if corpus == only}
+    else:
+        indexed_ids = set(indexed)
+
+    current_ids = set(live_docs)
+    unchanged = {
+        doc_id
+        for doc_id, live in live_docs.items()
+        if indexed.get(doc_id, ("", ""))[0] == live.file_hash and live.file_hash
+    }
+    to_upsert = current_ids - unchanged
+    to_delete = indexed_ids - current_ids
+    remove_ids = list(to_delete | to_upsert)
+    if remove_ids:
+        store.delete_by_doc_ids(remove_ids)
+        bm25.delete_by_doc_ids(remove_ids)
+
+    written = 0
+    if to_upsert:
+        batch: dict[str, list] = {"ids": [], "chunks": [], "sources": [], "metadatas": []}
+        for doc_id in sorted(to_upsert):
+            part = _chunk_live_doc(live_docs[doc_id])
+            for key in batch:
+                batch[key].extend(part[key])
+        if batch["chunks"]:
+            written = store.add(
+                batch["chunks"],
+                batch["sources"],
+                ids=batch["ids"],
+                metadatas=batch["metadatas"],
+            )
+            bm25.upsert(
+                batch["ids"],
+                batch["chunks"],
+                batch["sources"],
+                metadatas=batch["metadatas"],
+            )
+
+    log.info(
+        "ingest.kb_sync",
+        kb=kb_id,
+        skipped=len(unchanged),
+        upserted=len(to_upsert),
+        deleted=len(to_delete),
+        chunks=written,
+        vector_count=store.count(),
+        bm25_count=bm25.count(),
+    )
+    return written, len(unchanged), len(to_upsert), len(to_delete)
+
+
 def ingest(*, reset: bool = False, only: str | None = None) -> int:
-    """将知识库全部（或指定包）切块入库：每 KB 独立向量库 + BM25。"""
+    """增量入库：未改文件跳过 embedding；``--reset`` 先清空再全量写入。"""
     configure_logging()
     docs = load_all_documents(only=only)
-    if not docs:
-        log.error("ingest.empty", parent=str(get_settings().corpus_dir))
-        print("未找到任何语料。请在 data/corpus/<名称>/{markdown,html,csv}/ 下放置文件。")
-        return 0
-
     if reset:
         _reset_vector_store()
         _reset_bm25_index()
 
-    by_kb: dict[str, dict[str, list]] = defaultdict(
-        lambda: {"ids": [], "chunks": [], "sources": [], "metadatas": []}
-    )
+    if not docs and only is None:
+        log.error("ingest.empty", parent=str(get_settings().corpus_dir))
+        print("未找到任何语料。请在 data/corpus/<名称>/{markdown,html,csv,pdf}/ 下放置文件。")
+        return 0
+
+    live_by_kb: dict[str, dict[str, _LiveDoc]] = defaultdict(dict)
     for d in docs:
         corpus_name = str(d.metadata.get("corpus", "?"))
-        kind = str(d.metadata.get("kind", ""))
         kb_id = resolve_kb_id(d)
-        profile = kb_profile_for_doc(d)
-        chunk_infos = chunk_document(d, profile.max_chars, profile.chunk_strategy)
-        batch = by_kb[kb_id]
-        for i, info in enumerate(chunk_infos):
-            batch["ids"].append(_chunk_id(d.source, info.text, i))
-            batch["chunks"].append(info.text)
-            batch["sources"].append(d.source)
-            batch["metadatas"].append(
-                build_chunk_metadata(
-                    source=d.source,
-                    kind=kind,
-                    corpus=corpus_name,
-                    kb=kb_id,
-                    parent_text=info.parent_text,
-                    chunk_index=info.chunk_index,
-                )
-            )
+        live = _LiveDoc(
+            doc=d,
+            doc_id=document_id(d.source),
+            file_hash=content_hash(d.source, d.text),
+            corpus=corpus_name,
+            kb_id=kb_id,
+        )
+        live_by_kb[kb_id][live.doc_id] = live
 
     total = 0
+    skipped = upserted = deleted = 0
     kb_counts: dict[str, int] = {}
-    for kb_id, batch in sorted(by_kb.items()):
-        if not batch["chunks"]:
-            continue
-        store = create_vector_store(kb_id=kb_id)
-        n = store.add(
-            batch["chunks"],
-            batch["sources"],
-            ids=batch["ids"],
-            metadatas=batch["metadatas"],
+    for kb in list_kbs():
+        written, skip_n, upsert_n, delete_n = _sync_kb(
+            kb.id,
+            live_by_kb.get(kb.id, {}),
+            only=only,
         )
-        bm25 = create_bm25_store(kb_id=kb_id)
-        bm25.rebuild(
-            batch["ids"],
-            batch["chunks"],
-            batch["sources"],
-            metadatas=batch["metadatas"],
-        )
-        kb_counts[kb_id] = n
-        total += n
-        log.info(
-            "ingest.kb_done",
-            kb=kb_id,
-            chunks=n,
-            vector_count=store.count(),
-            bm25_count=bm25.count(),
-        )
-
-    if total == 0:
-        print("切块结果为空，未写入索引。")
-        return 0
+        kb_counts[kb.id] = written
+        total += written
+        skipped += skip_n
+        upserted += upsert_n
+        deleted += delete_n
 
     backend = get_settings().vector_backend
     bm25_backend = get_settings().bm25_backend
-    bundles = sorted({d.metadata.get("corpus", "?") for d in docs})
+    bundles = sorted({d.metadata.get("corpus", "?") for d in docs}) or ([only] if only else [])
     log.info(
         "ingest.done",
+        reset=reset,
         bundles=bundles,
         docs=len(docs),
         chunks=total,
+        skipped_docs=skipped,
+        upserted_docs=upserted,
+        deleted_docs=deleted,
         kb_counts=kb_counts,
         vector_backend=backend,
         bm25_backend=bm25_backend,
     )
-    print(f"\n已索引 {total} 个 chunk，来源语料包: {', '.join(bundles)}")
+    mode = "全量重建" if reset else "增量入库"
+    print(f"\n{mode}：写入 {total} 个 chunk，跳过 {skipped} 篇，更新 {upserted} 篇，删除 {deleted} 篇")
+    if bundles:
+        print(f"来源语料包: {', '.join(str(b) for b in bundles)}")
     kb_summary = ", ".join(f"{k}={v}" for k, v in sorted(kb_counts.items()))
     print(f"物理分库: {kb_summary}")
     print(
@@ -209,5 +288,5 @@ def ingest(*, reset: bool = False, only: str | None = None) -> int:
         s = get_settings()
         print(f"BM25 索引: opensearch ({s.opensearch_url}, index=<kb_id>)")
     else:
-        print(f"BM25 索引: data/chroma/<kb_id>/bm25.pkl")
+        print("BM25 索引: data/chroma/<kb_id>/bm25.pkl")
     return total

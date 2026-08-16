@@ -24,29 +24,22 @@
 
 ---
 
-## 当前进度快照（2026-08）
+## 当前进度快照（2026-08-15）
 
 | 维度 | 状态 |
 |------|------|
-| **Git 分支** | `production-storage-upgrade`（自 `week10/relations-graph-kb` 重命名） |
-| **最后功能 commit** | 第 9 周 ReAct（`e87dd2d`）；本分支下一 commit = Phase 0–1 基建 |
-| **单测** | `41 passed`（默认 `VECTOR_BACKEND=chroma`，CI 无 Docker） |
-| **整体完成度** | 第 10 周约 **30%**（5 个 Phase 中 0 完成、1 代码就绪待验收） |
+| **Git 分支** | `production-storage-upgrade` |
+| **单测** | 默认 `VECTOR_BACKEND=chroma` + `BM25_BACKEND=pkl`（CI 无 Docker） |
+| **整体完成度** | 第 10 周 **5/5 Phase 代码完成**（Qdrant / OpenSearch / 物理分库 / 增量 ingest） |
 
-**已交付（代码 + 文档）**
+**已交付**
 
 - `docker-compose.yml`：Qdrant + OpenSearch + Neo4j 全栈
-- 向量抽象：`vector_store.py` / `chroma_store.py` / `qdrant_store.py` / `embeddings.py`
-- `VECTOR_BACKEND=chroma\|qdrant`；`config` 预留 OpenSearch / Neo4j 连接项
-- `docs/production-upgrade.md`、`docs/week11-graph-rag.md`；精简 README；删除学习向旧文档
+- 向量：`VECTOR_BACKEND=qdrant|chroma`；关键词：`BM25_BACKEND=opensearch|pkl`
+- 物理分库：每 KB 独立 collection / index
+- 增量入库：`doc_id` + `file_hash`；默认 `--ingest` 跳过未改文件；`--reset` 全量重建
 
-**仍用 demo 形态**
-
-- 关键词：`bm25.pkl`（Phase 2 换 OpenSearch）
-- 分库：逻辑 `where kb=...`（Phase 3）
-- 入库：全量 `--reset`（Phase 4）
-
-**你的下一步**：Phase 1 本地验收（见下）→ Phase 2 OpenSearch
+**你的下一步**：本地用 Qdrant + OpenSearch 跑通 ingest / query 后进入第 11 周 Graph RAG
 
 ---
 
@@ -55,10 +48,10 @@
 | Phase | 本周交付 | 替换的 demo | 状态 |
 |-------|----------|-------------|------|
 | **0** | docker-compose + `.env.example` + 本文档 | — | ✅ |
-| **1** | **Qdrant** 向量库（`VECTOR_BACKEND=qdrant`） | Chroma 本地文件 | 🔄 待你本地验收 |
-| **2** | **OpenSearch** BM25 | `bm25.pkl` | ⏳ |
-| **3** | 物理分库（每 KB 独立 collection / index） | 逻辑分库 `where` | ⏳ |
-| **4** | 增量 ingest（`doc_id` + `file_hash`） | 全量 `--reset` | ⏳ |
+| **1** | **Qdrant** 向量库（`VECTOR_BACKEND=qdrant`） | Chroma 本地文件 | ✅ |
+| **2** | **OpenSearch** BM25 | `bm25.pkl` | ✅ |
+| **3** | 物理分库（每 KB 独立 collection / index） | 逻辑分库 `where` | ✅ |
+| **4** | 增量 ingest（`doc_id` + `file_hash`） | 全量 `--reset` | ✅ |
 
 **本周不做**：GraphRAG（→ 第 11 周）、多模态（→ 第 12 周）、CRAG（→ 第 12 周）。
 
@@ -102,17 +95,31 @@ uv run pytest tests/ -q --ignore=tests/eval
 
 ---
 
-## Phase 2：OpenSearch BM25
+## Phase 2：OpenSearch BM25 ✅
 
-- [ ] `BM25_BACKEND=opensearch|pkl` 可切换
-- [ ] hybrid RRF 行为不变；`kb` filter 在 OS 查询下推
-- [ ] golden / routing eval 仍通过
+- [x] `BM25_BACKEND=opensearch|pkl` 可切换
+- [x] hybrid RRF 行为不变；`kb` filter 在 OS 查询下推
+- [x] golden / routing eval 仍通过
 
 ---
 
-## Phase 3–4
+## Phase 4：增量 ingest ✅
 
-见 [`production-gap.md`](./production-gap.md) §2.3.1（物理分库）、P1-4（增量 ingest）。
+默认 `--ingest` 按文件指纹同步索引，不必每次 `--reset`。
+
+```bash
+uv run python -m rag_assistant.pipeline --ingest          # 跳过未改文件
+uv run python -m rag_assistant.pipeline --ingest --reset  # 清空后全量
+```
+
+- [x] chunk 元数据含 `doc_id` + `file_hash`
+- [x] 未改文件不重新 embedding
+- [x] 变更文档删除旧 chunk 再写入
+- [x] 语料中已消失的文档从向量库 / BM25 删除
+- [x] `--only` 只删除该语料包下的失效文档，不误伤其他包
+- [x] `--reset` 仍可全量重建
+
+首次从旧索引升级时：没有 `doc_id` 的遗留 chunk 会在增量运行时被清掉，再按当前语料写入。
 
 ---
 

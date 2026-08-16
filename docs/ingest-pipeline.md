@@ -1,8 +1,7 @@
 # RAG 入库流水线
 
-> 对应代码：`ingest/run.ingest()` → `load_all_documents()` → `chunk_document()` → `VectorStore.add()` + `BM25Store.rebuild()`  
-> CLI：`python -m rag_assistant.pipeline --ingest` → `cli` → `ingest()`  
-> 默认命令：`uv run python -m rag_assistant.pipeline --ingest --reset`
+> 对应代码：`ingest/run.ingest()` → 按 `doc_id`/`file_hash` 增量同步向量库 + BM25  
+> CLI：`python -m rag_assistant.pipeline --ingest`（增量）· `--ingest --reset`（全量）
 
 ## 端到端流程图
 
@@ -26,13 +25,12 @@ flowchart TD
     L --> N[build_chunk_metadata + _chunk_id]
     M --> N
     N --> O{--reset?}
-    O -->|是| P[清空 data/chroma/unified]
-    O -->|否| Q[保留旧库目录]
-    P --> R[VectorStore.add 分批 embedding ≤20]
+    O -->|是| P[清空各 KB 索引]
+    O -->|否| Q[对照 doc_id + file_hash]
+    P --> R[未改跳过 / 变更 upsert / 失效删除]
     Q --> R
-    R --> S[(Chroma 统一向量库)]
-    R --> T[BM25Store.rebuild]
-    T --> U[(bm25.pkl)]
+    R --> S[VectorStore.add 仅对变更文档 embedding]
+    R --> T[BM25 upsert / delete_by_doc_id]
 ```
 
 ## 步骤说明
@@ -45,8 +43,8 @@ flowchart TD
 | 4. 切块 | `chunking.chunk_document()` | 长文切成可检索的小段；策略由标签决定 |
 | 5. 贴条（元数据） | `metadata.build_chunk_metadata()` | 每个小段附上来源、类型、标签等，方便检索后过滤和引用 |
 | 6. 编号 | `ingest/run._chunk_id()` | 给每段生成唯一 id，向量库和 BM25 用同一编号 |
-| 7. 向量入库 | `vector.VectorStore.add()` | 把每段转成向量，写入 Chroma |
-| 8. 关键词入库 | `bm25.BM25Store.rebuild()` | 同一批段落再建一份关键词索引（bm25.pkl） |
+| 7. 向量入库 | `VectorStore.add()` | 仅对新增/变更文档 embedding 并 upsert |
+| 8. 关键词入库 | `BM25.upsert` / `delete_by_doc_ids` | 与向量库同一批 chunk；未改文档不重建 |
 
 ## 从「KB 路由」开始：通俗版
 

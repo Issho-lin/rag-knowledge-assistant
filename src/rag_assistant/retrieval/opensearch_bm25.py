@@ -24,6 +24,8 @@ _INDEX_BODY: dict[str, Any] = {
             "corpus": {"type": "keyword"},
             "kb": {"type": "keyword"},
             "domain": {"type": "keyword"},
+            "doc_id": {"type": "keyword"},
+            "file_hash": {"type": "keyword"},
             "parent_text": {"type": "text", "index": False},
             "chunk_index": {"type": "integer"},
         }
@@ -74,20 +76,28 @@ class OpenSearchBM25Store:
             raise ValueError("ids/docs/sources 长度必须一致")
         if metadatas is not None and len(metadatas) != len(docs):
             raise ValueError("metadatas 长度必须与 docs 一致")
-
         self.delete_index()
-        self._ensure_index()
+        return self.upsert(ids, docs, sources, metadatas=metadatas)
 
-        if not docs:
+    def upsert(
+        self,
+        ids: list[str],
+        docs: list[str],
+        sources: list[str],
+        *,
+        metadatas: list[dict[str, str | int]] | None = None,
+    ) -> int:
+        if not ids:
             return 0
+        if not (len(ids) == len(docs) == len(sources)):
+            raise ValueError("ids/docs/sources 长度必须一致")
+        if metadatas is not None and len(metadatas) != len(docs):
+            raise ValueError("metadatas 长度必须与 docs 一致")
 
+        self._ensure_index()
         actions: list[dict[str, Any]] = []
         for i, (chunk_id, doc, src) in enumerate(zip(ids, docs, sources)):
-            meta = (
-                metadatas[i]
-                if metadatas is not None
-                else {"source": src}
-            )
+            meta = metadatas[i] if metadatas is not None else {"source": src}
             source_doc: dict[str, Any] = {
                 "chunk_id": chunk_id,
                 "text": doc,
@@ -101,10 +111,36 @@ class OpenSearchBM25Store:
                     "_source": source_doc,
                 }
             )
-
         bulk(self._client, actions, refresh=True)
-        log.info("bm25.opensearch.rebuilt", index=self._index, count=len(docs))
+        log.info("bm25.opensearch.upserted", index=self._index, count=len(docs))
         return len(docs)
+
+    def delete_by_doc_ids(self, doc_ids: list[str]) -> int:
+        ids = [d for d in doc_ids if d]
+        if not ids or not self._client.indices.exists(index=self._index):
+            return 0
+        res = self._client.delete_by_query(
+            index=self._index,
+            body={"query": {"terms": {"doc_id": ids}}},
+            refresh=True,
+        )
+        deleted = int(res.get("deleted", 0))
+        if deleted:
+            log.info("bm25.opensearch.deleted_by_doc_id", index=self._index, deleted=deleted)
+        return deleted
+
+    def purge_unfingerprinted(self) -> int:
+        if not self._client.indices.exists(index=self._index):
+            return 0
+        res = self._client.delete_by_query(
+            index=self._index,
+            body={"query": {"bool": {"must_not": [{"exists": {"field": "doc_id"}}]}}},
+            refresh=True,
+        )
+        deleted = int(res.get("deleted", 0))
+        if deleted:
+            log.info("bm25.opensearch.purge_unfingerprinted", index=self._index, deleted=deleted)
+        return deleted
 
     def query(
         self,

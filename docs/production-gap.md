@@ -16,7 +16,7 @@
 | **全库 `get_scores` 再取 top-k** | 「BM25 实现没问题」 | 算法对，**工程形态**不对（§2.5） |
 | **本地 cross-encoder 重排** | 「重排都要自己下模型」 | 小规模可本地；规模化常用 **Cohere Rerank API** 等托管 |
 | **CLI 同步 ingest** | 「入库就是跑一条命令」 | 队列 + worker + 状态 API + 失败重试 |
-| **全量 `--reset`** | 「改语料就重跑 ingest」 | 按 `doc_id` **增量 upsert/删除** |
+| **全量 `--reset`** | 「改语料就重跑 ingest」 | 按 `doc_id` **增量 upsert/删除**（本仓库默认 `--ingest` 已支持；`--reset` 仍可全量） |
 | **ReAct 并行调工具** | 「Agent 越快越好」 | 本地 cross-encoder 需串行（`RLock`）；或托管 rerank API |
 
 ---
@@ -33,7 +33,7 @@
 | 语料 ETL | 多格式 loader、按类型切块 | pypdf 直抽；无版面解析/OCR 管线 |
 | BM25 | 算法正确，小库够用 | **`bm25.pkl` 单机** + 全库 `get_scores`，非 ES 倒排 |
 | 向量库 | hybrid 召回思路对 | **Chroma 本地嵌入式**——学习/PoC 友好，**非严肃生产主力**（§2.3.2） |
-| 入库 | 全量 `--ingest --reset` | 无增量索引、无异步任务队列 |
+| 入库 | 默认同步增量 `--ingest`（`doc_id` + `file_hash`） | 无异步任务队列 |
 
 ---
 
@@ -71,7 +71,7 @@
 | 向量 | Chroma 本地 `data/chroma/unified` | Qdrant、Milvus、pgvector、OpenSearch kNN | 需 HA、权限、百万 chunk |
 | 关键词 | `bm25.pkl` 单文件 | **Elasticsearch / OpenSearch**（BM25 + filter 一体） | chunk > 几万 |
 | 分库 | **逻辑分库**（见下 §2.3.1） | 逻辑分库 **或** 物理分库（collection / 索引 / 实例级隔离） | 多租户强隔离、不同 embedding、独立扩缩容 |
-| 增量 | 仅全量 `--reset` | 按 `doc_id`/`file_hash` upsert 与删除 | 语料频繁增删改 |
+| 增量 | `doc_id` + `file_hash`：跳过未改、upsert 变更、删除失效 | 同左；生产常加队列与失败重试 | 多租户上传 / 日更文档 |
 
 #### 2.3.1 逻辑分库 vs 物理分库（重要）
 
@@ -228,7 +228,7 @@ data/chroma/policies/bm25.pkl
 | P1-1 | **BM25 倒排索引** | 全库 `get_scores`，库变大变慢 | 按 token 倒排 + 只对命中 posting 打分；或按 `kb` 拆多个 BM25 索引 | chunk > 5k 或 perf 变慢 |
 | P1-2 | **PDF 解析管线** | pypdf 乱码/无结构 | Docling/Unstructured → MD → heading 切块；乱码走 OCR | 真实 PDF 语料上线前 |
 | P1-3 | **PDF 噪声过滤** | 封面/目录入库 | 页级规则 + 可选 `is_noise_page`；ingest 日志记录 drop 原因 | 与 P1-2 同步 |
-| P1-4 | **增量 ingest** | 每次全量 embedding | `doc_id` + `file_hash`；upsert/删除失效 chunk | 语料周更时 |
+| P1-4 | **增量 ingest** | 每次全量 embedding | `doc_id` + `file_hash`；upsert/删除失效 chunk | **第 10 周已做** |
 | P1-5 | **简化 filter_chunks** | metadata 与召回重复 | `filter_chunks` 只管低分 | 随时小改 |
 | P1-6 | **Ragas / 扩 golden** | keyword 评分脆 | 50+ 题；抽样 Ragas faithfulness（可选） | 第 12 周前后 |
 | P1-7 | **入库 chunk 预览** | 无 Dify 式 preview | ingest 后输出抽样 chunk 或 CLI `--preview-chunks` | 接真实语料前 |

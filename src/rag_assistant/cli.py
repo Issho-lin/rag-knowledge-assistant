@@ -86,11 +86,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="内部知识助手（RAG）— 统一知识库，用户无需选库"
     )
-    parser.add_argument("--ingest", action="store_true", help="构建/重建统一向量索引")
+    parser.add_argument("--ingest", action="store_true", help="增量入库（未改文件跳过 embedding）")
     parser.add_argument(
         "--reset",
         action="store_true",
-        help="配合 --ingest：清空统一向量库后重建",
+        help="配合 --ingest：清空各 KB 索引后全量重建",
     )
     parser.add_argument(
         "--only",

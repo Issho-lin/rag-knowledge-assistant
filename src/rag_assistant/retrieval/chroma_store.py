@@ -39,6 +39,12 @@ class VectorStoreBackend(Protocol):
 
     def count(self) -> int: ...
 
+    def list_doc_fingerprints(self) -> dict[str, tuple[str, str]]: ...
+
+    def delete_by_doc_ids(self, doc_ids: list[str]) -> int: ...
+
+    def purge_unfingerprinted(self) -> int: ...
+
 
 class ChromaVectorStore:
     def __init__(
@@ -128,3 +134,44 @@ class ChromaVectorStore:
             return self._coll.count()
         except Exception:
             return 0
+
+    def list_doc_fingerprints(self) -> dict[str, tuple[str, str]]:
+        """doc_id -> (file_hash, corpus)。无 doc_id 的遗留 chunk 不计入。"""
+        if self.count() == 0:
+            return {}
+        data = self._coll.get(include=["metadatas"])
+        out: dict[str, tuple[str, str]] = {}
+        for meta in data.get("metadatas") or []:
+            if not meta:
+                continue
+            doc_id = str(meta.get("doc_id") or "")
+            if not doc_id:
+                continue
+            out[doc_id] = (str(meta.get("file_hash") or ""), str(meta.get("corpus") or ""))
+        return out
+
+    def delete_by_doc_ids(self, doc_ids: list[str]) -> int:
+        ids = [d for d in doc_ids if d]
+        if not ids or self.count() == 0:
+            return 0
+        before = self.count()
+        for start in range(0, len(ids), 100):
+            batch = ids[start : start + 100]
+            self._coll.delete(where={"doc_id": {"$in": batch}})
+        return max(0, before - self.count())
+
+    def purge_unfingerprinted(self) -> int:
+        """删除没有 doc_id 的遗留 chunk，避免增量与旧全量索引叠两份。"""
+        if self.count() == 0:
+            return 0
+        data = self._coll.get(include=["metadatas"])
+        orphan_ids = [
+            cid
+            for cid, meta in zip(data.get("ids") or [], data.get("metadatas") or [])
+            if not (meta or {}).get("doc_id")
+        ]
+        if not orphan_ids:
+            return 0
+        self._coll.delete(ids=orphan_ids)
+        log.info("vector.chroma.purge_unfingerprinted", count=len(orphan_ids))
+        return len(orphan_ids)

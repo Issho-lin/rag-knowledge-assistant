@@ -10,6 +10,7 @@ from typing import Literal
 
 from ..retrieval.options import RetrievalOptions
 
+# 切块策略-1.按markdown段落标题；2.按固定块的大小
 ChunkStrategy = Literal["heading", "fixed_window"]
 
 

@@ -35,9 +35,11 @@ def build_chunk_metadata(
     kb: str,
     parent_text: str,
     chunk_index: int,
+    doc_id: str = "",
+    file_hash: str = "",
 ) -> dict[str, str | int]:
     """入库时写入向量库 / BM25 的元数据。"""
-    return {
+    meta: dict[str, str | int] = {
         "source": source,
         "kind": kind,
         "corpus": corpus,
@@ -49,6 +51,11 @@ def build_chunk_metadata(
         # 块索引
         "chunk_index": chunk_index,
     }
+    if doc_id:
+        meta["doc_id"] = doc_id
+    if file_hash:
+        meta["file_hash"] = file_hash
+    return meta
 
 
 def chunk_from_hit(meta: dict[str, Any], *, text: str, doc_id: str, score: float) -> dict[str, Any]:

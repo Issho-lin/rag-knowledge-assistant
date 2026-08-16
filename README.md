@@ -32,7 +32,7 @@
 |------|------|
 | 语料 | `internal/`（MD/HTML/CSV）+ `kb_pdf/`（PDF） |
 | 多库 | KB Registry（policies / tabular / pdf）；逻辑分库 + Profile |
-| 入库 | 向量：`--ingest --reset`（`VECTOR_BACKEND=qdrant\|chroma`） |
+| 入库 | 默认 `--ingest` 增量（`doc_id` + `file_hash`）；`--reset` 全量 |
 | 检索 | hybrid + RRF + rerank；KB 过滤在召回阶段下推 |
 | 问答路径 | `--query` 直连 · `--agent` 路由单库 · **`--react` ReAct（主路径）** |
 | 界面 | CLI `--chat --react`；Gradio（ReAct） |
@@ -62,7 +62,7 @@ docs/
 docker compose up -d   # Qdrant + OpenSearch + Neo4j（后两者第 10/11 周再接代码）
 cp .env.example .env   # OPENAI_API_KEY；VECTOR_BACKEND=qdrant
 uv sync --extra dev --extra ui --extra prod
-uv run python -m rag_assistant.pipeline --ingest --reset
+uv run python -m rag_assistant.pipeline --ingest --reset   # 首次全量；之后只需 --ingest
 uv run python -m rag_assistant.pipeline --react --query "年假有多少天？"
 ```
 
@@ -73,7 +73,7 @@ uv venv --python 3.11
 uv sync --extra dev --extra ui
 cp .env.example .env   # OPENAI_API_KEY；VECTOR_BACKEND=chroma（默认）
 
-uv run python -m rag_assistant.pipeline --ingest --reset
+uv run python -m rag_assistant.pipeline --ingest --reset   # 首次全量；之后只需 --ingest
 
 # 推荐：ReAct
 uv run python -m rag_assistant.pipeline --react --query "年假有多少天？怎么折现？"
@@ -101,5 +101,5 @@ uv run python -c "from modelscope import snapshot_download; print(snapshot_downl
 
 - **默认 hybrid + rerank**；rerank 分 + `filter_chunks` 滤空即拒答
 - **工具只检索**；ReAct 由 Agent 综合片段写答案
-- **存储改造中**：向量 Chroma→Qdrant（Phase 1）；BM25→OpenSearch（Phase 2）— 见 `production-upgrade.md`
+- **存储**：向量 Chroma/Qdrant、BM25 pkl/OpenSearch 可切换；物理分库；默认增量 ingest
 - 踩坑实录见 [`rag-pitfalls.md`](rag-pitfalls.md)

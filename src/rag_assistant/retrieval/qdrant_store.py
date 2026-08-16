@@ -10,7 +10,12 @@ from qdrant_client.models import (
     Distance,
     FieldCondition,
     Filter,
+    FilterSelector,
+    IsEmptyCondition,
+    MatchAny,
     MatchValue,
+    PayloadField,
+    PayloadSchemaType,
     PointStruct,
     VectorParams,
 )
@@ -46,6 +51,7 @@ class QdrantVectorStore:
     def _ensure_collection(self) -> None:
         names = {c.name for c in self._client.get_collections().collections}
         if self._collection in names:
+            self._ensure_payload_index()
             return
         dim = embedding_dimension()
         self._client.create_collection(
@@ -53,6 +59,17 @@ class QdrantVectorStore:
             vectors_config=VectorParams(size=dim, distance=Distance.COSINE),
         )
         log.info("vector.qdrant.collection_created", name=self._collection, dim=dim)
+        self._ensure_payload_index()
+
+    def _ensure_payload_index(self) -> None:
+        try:
+            self._client.create_payload_index(
+                collection_name=self._collection,
+                field_name="doc_id",
+                field_schema=PayloadSchemaType.KEYWORD,
+            )
+        except Exception:
+            pass
 
     def add(
         self,
@@ -129,3 +146,62 @@ class QdrantVectorStore:
             return int(self._client.count(collection_name=self._collection, exact=True).count)
         except Exception:
             return 0
+
+    def list_doc_fingerprints(self) -> dict[str, tuple[str, str]]:
+        """从 Qdrant 里扫出「已经入库的文档指纹」，给 _sync_kb 对照用。"""
+        if self.count() == 0:
+            return {}
+        out: dict[str, tuple[str, str]] = {}
+        offset = None
+        while True:
+            records, offset = self._client.scroll(
+                collection_name=self._collection,
+                with_payload=["doc_id", "file_hash", "corpus"],
+                with_vectors=False,
+                limit=256,
+                offset=offset,
+            )
+            for rec in records:
+                payload = rec.payload or {}
+                doc_id = str(payload.get("doc_id") or "")
+                if not doc_id:
+                    continue
+                out[doc_id] = (
+                    str(payload.get("file_hash") or ""),
+                    str(payload.get("corpus") or ""),
+                )
+            if offset is None:
+                break
+        return out
+
+    def delete_by_doc_ids(self, doc_ids: list[str]) -> int:
+        ids = [d for d in doc_ids if d]
+        if not ids or self.count() == 0:
+            return 0
+        before = self.count()
+        self._client.delete(
+            collection_name=self._collection,
+            points_selector=FilterSelector(
+                filter=Filter(
+                    must=[FieldCondition(key="doc_id", match=MatchAny(any=ids))]
+                )
+            ),
+        )
+        return max(0, before - self.count())
+
+    def purge_unfingerprinted(self) -> int:
+        if self.count() == 0:
+            return 0
+        before = self.count()
+        self._client.delete(
+            collection_name=self._collection,
+            points_selector=FilterSelector(
+                filter=Filter(
+                    must=[IsEmptyCondition(is_empty=PayloadField(key="doc_id"))]
+                )
+            ),
+        )
+        removed = max(0, before - self.count())
+        if removed:
+            log.info("vector.qdrant.purge_unfingerprinted", count=removed)
+        return removed

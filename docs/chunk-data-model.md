@@ -87,6 +87,8 @@ pickle 反序列化后是一个字典，四个平行列表（下标 `i` 指向�
 | `corpus` | str | `load_all_documents` | 语料包文件夹名，如 `internal` | 否 |
 | `kb` | str | `resolve_kb_id` | 逻辑 KB：`policies` / `tabular` / `pdf` | `--kb` 时 Chroma `where` + BM25 子集召回 |
 | `domain` | str | `infer_domain` | 业务领域：`hr` / `it_sec` / `ops` / `tabular` / `general` | **预留，默认未启用** |
+| `doc_id` | str | 增量入库 | 文档指纹 ID（`d_` + 路径哈希） | 否（入库跳过/删除用） |
+| `file_hash` | str | 增量入库 | 源文件 SHA-256 | 否（未改则跳过 embedding） |
 | `parent_text` | str | 切块 | 所属整节原文；子块与整节相同时等于 `text` | 父文档扩展时用 |
 | `chunk_index` | int | 切块 | 该文件内第几块（从 0 起） | 否 |
 
