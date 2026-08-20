@@ -7,11 +7,12 @@
 
 ```
 src/rag_assistant/
-├── cli.py                 # argparse：--ingest / --query / --agent / --react / --chat
+├── cli.py                 # argparse：--ingest / --ingest-graph / --query / --agent / --react / --chat
 ├── pipeline.py            # → cli.main
 ├── ui.py                  # Gradio（query_agent_react）
 ├── core/                  # config, logging, llm, paths, observability
-├── ingest/run.py          # 入库流水线
+├── ingest/run.py          # 文档入库流水线（向量 + BM25）
+├── graph/                 # 图入库与图检索（Neo4j）
 ├── kb/                    # registry, profiles, search（工具 + run_kb_retrieve）
 ├── retrieval/             # vector, bm25, hybrid, rerank, engine, filters, context
 ├── answer/                # generate（produce_answer）, refusal
@@ -33,14 +34,16 @@ src/rag_assistant/
 
 ```mermaid
 flowchart TB
-    subgraph ingest["入库（离线）"]
+    subgraph ingest["入库（离线，两条链路）"]
         A1[语料 MD/HTML/CSV/PDF] --> A2[ingest: loaders + Profile 分块]
         A2 --> A3[Embedding 分批≤20]
-        A3 --> A4[(Chroma unified)]
-        A2 --> A5[(BM25 pkl)]
+        A3 --> A4[("向量库 每 KB 一个<br/>Qdrant collection / Chroma 目录")]
+        A2 --> A5[("BM25 每 KB 一个<br/>OpenSearch index / pkl")]
+        G1[kb_graph MD + 通讯录 CSV] --> G2[ingest-graph: 列角色 ETL + LLM 补抽]
+        G2 --> G3[(Neo4j)]
     end
 
-    subgraph shared["共享：检索层"]
+    subgraph shared["共享：文档检索层"]
         SQ[检索问句 search_q] --> RET[retrieve_with_options]
         RET --> OUTC[top-k chunks]
     end
@@ -49,6 +52,10 @@ flowchart TB
         M1["--query direct.query<br/>全库或 --kb"] --> RET
         M2["--agent query_agent<br/>路由 1 库"] --> RET
         M3["--react 工具 run_kb_retrieve<br/>可多库多调"] --> RET
+        M2 -->|"tool=query_relations"| GQ["GraphPlan → 参数化 Cypher"]
+        M3 -->|"tool=query_relations"| GQ
+        GQ --> G3
+        G3 --> OUTC
         OUTC --> PA[produce_answer]
         PA --> QR1[QueryResult]
         OUTC --> OBS[片段 Observation]
@@ -66,6 +73,8 @@ flowchart TB
     UI --> M3
 ```
 
+图链路与文档链路**在工具边界汇合**：`query_relations` 也返回同构的 chunk（`kb=relations`），Agent 侧看不出后端是 Neo4j 还是向量库。
+
 ## 三条问答路径
 
 | CLI | 代码入口 | 谁选库 | 谁生成最终答案 |
@@ -74,14 +83,32 @@ flowchart TB
 | `--agent` | `query/modes/agent_route/` | cheap LLM function calling 选 **1** 个工具 | `produce_answer` |
 | `--react` | `query/modes/agent_react/` | Agent 循环调工具，可 **多个** KB | Agent 读 Observation 后撰写 |
 
-**工具统一约定**（`kb/search.py`）：`build_kb_tools()` 只检索，返回格式化片段；不在工具内调用 `produce_answer`。
+**工具统一约定**（`kb/search.py`）：`build_kb_tools()` 只检索，返回格式化片段；不在工具内调用 `produce_answer`。`run_kb_retrieve` 按 `kb.backend` 分流——`vector` 走 `retrieve_chunks`，`graph` 走 `graph.query.query_relations`。
+
+## 四个知识库工具
+
+| tool | KB | 后端 | 覆盖的问法 |
+|------|----|------|-----------|
+| `search_policies` | policies | 向量 + BM25 | 制度条文、FAQ、SOP |
+| `search_tabular` | tabular | 向量 + BM25 | 工号、分机、邮箱等字段精确匹配 |
+| `search_pdf_handbook` | pdf | 向量 + BM25 | PDF 手册、园区后勤 |
+| `query_relations` | relations | **Neo4j** | 汇报线、隔级上级、服务依赖链、审批链 |
+
+前三个由 `--ingest` 建索引，第四个由 `--ingest-graph` 建图；`list_vector_kbs()` 保证 `relations` 不会被写进向量库或参与跨库召回。
 
 ## 模块职责
 
 | 模块 | 职责 |
 |------|------|
-| `ingest/` | 语料发现、按 Profile 切块、写 Chroma + BM25 |
-| `kb/registry.py` | 逻辑 KB（policies / tabular / pdf）与 tool 名 |
+| `ingest/` | 语料发现、按 Profile 切块、按 KB 物理分库写向量 + BM25 |
+| `graph/schema.py` | 图本体：允许的关系类型、列角色同义词、问法词典 |
+| `graph/extract.py` | 规则 ETL：按列角色认表头，抽 `PersonFact` 与三元组 |
+| `graph/identity.py` | 实体对齐：以通讯录为主数据，统一姓名/工号 |
+| `graph/extract_llm.py` | LLM 补抽散文中的关系（仅限本体内类型） |
+| `graph/ingest.py` | 按 `SourceDoc.file_hash` 增量写 Neo4j |
+| `graph/plan.py` | 问句 → `GraphPlan`（LLM 规划，失败降级词典） |
+| `graph/query.py` | `GraphPlan` → 参数化 Cypher → chunk |
+| `kb/registry.py` | 四个 KB（policies / tabular / pdf / relations）与 tool 名、后端类型 |
 | `kb/profiles.py` | 每库切块 + 检索增强开关（decompose、expand_parent） |
 | `kb/search.py` | `run_kb_retrieve`、LangChain 工具、`format_chunks_observation` |
 | `retrieval/engine.py` | 子查询分解、召回、rerank、过滤、父文档扩展 |
@@ -91,7 +118,7 @@ flowchart TB
 | `answer/generate.py` | `produce_answer`、`build_citations` |
 | `retrieval/rerank.py` | bge-reranker；`RLock` 串行化（ReAct 并行 tool 时防 MPS 崩溃） |
 | `cli.py` | 命令行入口 |
-| `tests/eval/` | golden 回归、路由 eval、三路检索对照 |
+| `tests/eval/` | golden 回归、路由 eval、三路检索对照、图 vs 文档对照 |
 
 ## 观测点（Langfuse）
 
@@ -111,13 +138,14 @@ rag-react-query
 └── agent-react（工具内检索无单独 produce_answer span）
 ```
 
-## Eval 基线（2026-08-16，Qdrant + OpenSearch）
+## Eval 基线（2026-08-20，Qdrant + OpenSearch + Neo4j）
 
 | 套件 | 指标 |
 |------|------|
-| `tests/eval/run.py`（检索 + produce_answer） | golden **33/34**，recall@4 **31/31** |
-| `tests/eval/run_routing.py`（`--agent` 选型） | routing **6/6** |
-| 单测 | **51** passed（`--ignore=tests/eval`） |
+| `tests/eval/run.py`（检索 + produce_answer） | golden **33/34**，recall@4 **31/31**（37 题中 3 道图题标 `skip_direct_eval`） |
+| `tests/eval/run_routing.py`（`--agent` 选型） | routing **9/9**（含 3 道关系题 → `query_relations`） |
+| `tests/eval/run_graph_compare.py`（文档检索 vs 图检索） | 3 道关系题：文档 0/0/1 命中，图 3/3 命中 |
+| 单测 | **61** passed（`--ignore=tests/eval`） |
 
 三路检索对照（vector / hybrid / hybrid+rerank）：`tests/eval/compare.py`。
 
@@ -127,8 +155,12 @@ rag-react-query
 - `REFUSE_MIN_RERANK_SCORE=0.15` — rerank 后低分过滤阈值（滤空 → 拒答）
 - `QUERY_DECOMPOSE_ENABLED=false` — 子查询分解（默认关；ReAct 复合题主要靠 Agent 拆 tool query）
 - `CHAT_MODEL_STRONG` / `CHAT_MODEL_CHEAP` — 生成 / 改写 / 路由分级
+- `GRAPH_LLM_EXTRACT=true` — 图入库时用 LLM 补抽散文关系（关掉则只跑规则 ETL）
+- `GRAPH_QUERY_PLANNER=true` — 图查询用 LLM 出 `GraphPlan`（关掉则降级本体词典）
+- `NEO4J_URI` / `NEO4J_USER` / `NEO4J_PASSWORD` — 图后端连接
 
 ## 相关文档
 
 - [问答流水线](./query-pipeline.md)
+- [第 11 周 Graph RAG](./week11-graph-rag.md)
 - [与业界落地差距](./production-gap.md)

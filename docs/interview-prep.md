@@ -8,19 +8,21 @@
 
 ## 能力快照（面试前核对数字）
 
-| 项 | 当前值（截至 2026-08-16） |
+| 项 | 当前值（截至 2026-08-20） |
 |----|---------------------------|
-| 场景 | 虚构「星云科技」内部制度 / FAQ / 通讯录 / PDF 手册问答 |
-| 语料规模 | **14** 篇文档（MD/HTML/CSV/PDF）→ **72** 个文本块（policies=63 / tabular=1 / pdf=8） |
-| 知识库 | 三库 policies / tabular / pdf；**物理分库**（每 KB 独立向量 collection / BM25 索引）+ Profile |
-| 存储 | 向量 `qdrant\|chroma`；关键词 `opensearch\|pkl`；CI 默认 Chroma + pkl |
-| 入库 | 默认 `--ingest` **增量**（`doc_id` + `file_hash`）；`--reset` 全量 |
-| 回归题集 | **34** 道人工题（含 **3** 道「库外应拒答」） |
-| 答案通过率 | **33/34**（`run.py`，Qdrant+OpenSearch；1 题 `release-window` 漏写「双人复核」，检索已命中） |
-| 检索召回 | **31/31**（前 4 条是否命中期望文档；3 道拒答题不计） |
-| 路由选型 | **6/6**（`run_routing.py`：`--agent` 单库工具选型） |
+| 场景 | 虚构「星云科技」内部制度 / FAQ / 通讯录 / PDF 手册 / 组织与依赖关系问答 |
+| 语料规模 | 文档侧 **14** 篇（MD/HTML/CSV/PDF）→ **72** 块（policies=63 / tabular=1 / pdf=8）；关系侧 **3** 篇 MD + 通讯录 |
+| 图谱规模 | Person **10** / Service **5** / Step **4**，边 **16**（REPORTS_TO / DEPENDS_ON / NEXT） |
+| 知识库 | 四库 policies / tabular / pdf / **relations**；前三库**物理分库**（各自向量 collection + BM25 索引）+ Profile，第四库走 Neo4j |
+| 存储 | 向量 `qdrant\|chroma`；关键词 `opensearch\|pkl`；图 **Neo4j**；CI 默认 Chroma + pkl，不连图 |
+| 入库 | `--ingest` **增量**（`doc_id` + `file_hash`）；`--ingest-graph` **增量**（`SourceDoc.file_hash`）；`--reset` 全量 |
+| 回归题集 | **37** 道人工题（含 **3** 道「库外应拒答」、**3** 道关系题） |
+| 答案通过率 | **33/34**（`run.py`，Qdrant+OpenSearch；3 道关系题标 `skip_direct_eval` 不计；1 题 `release-window` 漏写「双人复核」，检索已命中） |
+| 检索召回 | **31/31**（前 4 条是否命中期望文档；拒答题与关系题不计） |
+| 路由选型 | **9/9**（`run_routing.py`：`--agent` 工具选型，含 3 道关系题选中 `query_relations`） |
+| 图 vs 文档对照 | 3 道关系题：文档检索命中 0 / 0 / 1，图检索 **3/3** 命中（`run_graph_compare.py`） |
 | ReAct 端到端 | **6/7**（`run_react.py`，7 题子集） |
-| 单测 | **51** collected（默认 Chroma + pkl，含增量入库） |
+| 单测 | **61** passed（默认 Chroma + pkl，含增量入库与图抽取；图单测不连 Neo4j） |
 | 检索方案对照 | 纯向量 / 混合 / 混合+重排，在本题集上分数相同 |
 | **默认演示 / 产品路径** | **`--react` ReAct**（CLI 与 Gradio 一致） |
 | 辅助路径 | `--query` 全库直连 RAG（eval 底座）；`--agent` 路由单库（理解对照） |
@@ -30,9 +32,9 @@
 
 ## 已实现 vs 未实现
 
-**已做完的**：入库（含 PDF）、**物理分库 + Profile**、**可切换存储**（Qdrant/Chroma、OpenSearch/pkl）、**增量入库**、混合检索、重排、带来源的回答、规则+模型两层拒答、多轮改写、**Agent 工具路由（`--agent`）**、**ReAct 多工具（`--react`，CLI 与 Gradio 主路径）**、可观测、可重复评测。
+**已做完的**：入库（含 PDF）、**物理分库 + Profile**、**可切换存储**（Qdrant/Chroma、OpenSearch/pkl）、**增量入库**、混合检索、重排、带来源的回答、规则+模型两层拒答、多轮改写、**Agent 工具路由（`--agent`）**、**ReAct 多工具（`--react`，CLI 与 Gradio 主路径）**、**Graph RAG（Neo4j + `query_relations`，规则 ETL + 实体对齐 + 参数化 Cypher）**、可观测、可重复评测。
 
-**还没做的**（被问到如实说）：第 11 周 Graph RAG（Neo4j）、扩大 ReAct golden、Ragas 自动化打分、异步入库队列。
+**还没做的**（被问到如实说）：多模态检索、CRAG / Self-RAG 纠错、扩大 ReAct golden、Ragas 自动化打分、异步入库队列、图谱的时效性（关系没有生效/失效时间）。
 
 ---
 
@@ -40,23 +42,25 @@
 
 ### 30 秒
 
-我做了一个公司内部知识助手：员工问年假、报销、工号、设备手册这类问题，系统从**多套知识库**里检索相关段落，由 **ReAct Agent** 选库、可多步查资料，再综合片段写答案并标明出处。问库外内容或检索很不相关时会拒答。我建了 34 道题做回归测试，检索目前全过，答案偶尔会漏一个要点，也有命令行可以演示。
+我做了一个公司内部知识助手：员工问年假、报销、工号、设备手册这类问题，系统从**多套知识库**里检索相关段落，由 **ReAct Agent** 选库、可多步查资料，再综合片段写答案并标明出处。问「谁的上级是谁」「这个服务依赖什么」这种关系题时，它会转去查一个**知识图谱**而不是硬搜文档。问库外内容或检索很不相关时会拒答。我建了 37 道题做回归测试，检索目前全过，答案偶尔会漏一个要点，也有命令行可以演示。
 
 ### 1 分钟
 
 这个项目模拟的是**企业内部知识助手**。员工用口语提问，系统从制度、FAQ、通讯录、PDF 手册等文档里找依据再回答，并且能说明**答案引自哪份文件**。
 
-离线阶段，我把 Markdown、网页、表格、PDF 读进来，按**知识库 Profile** 分块——制度按章节、表格按行、PDF 固定窗口——然后写入**三个物理库**（每套 KB 自己的向量索引和 BM25）。默认增量入库：文件没改就跳过 embedding，改了整篇换掉，删了的从索引清掉。用户不用自己选库。
+离线阶段，我把 Markdown、网页、表格、PDF 读进来，按**知识库 Profile** 分块——制度按章节、表格按行、PDF 固定窗口——然后写入**三个物理库**（每套 KB 自己的向量索引和 BM25）。另有一条并行的入库链路，把组织架构、系统依赖、审批流这类文档抽成**三元组写进图数据库**。两条链路都是增量：文件没改就跳过，改了整篇换掉，删了的从索引清掉。用户不用自己选库。
 
-在线阶段，默认走 **ReAct**：Agent 根据问题决定调用哪个 `search_*` 工具，必要时**连续查多个库**（比如制度 + 表格），每次工具只返回检索片段，由 Agent 读 Observation 后写最终答案。每条工具内部仍是 hybrid 召回 + rerank + 低分过滤。如果检索明显不靠谱，工具层会提示「未检索到」，Agent 可换库或拒答。
+在线阶段，默认走 **ReAct**：Agent 根据问题决定调用哪个工具，必要时**连续查多个库**（比如制度 + 表格），每次工具只返回检索片段，由 Agent 读 Observation 后写最终答案。文档类工具内部是 hybrid 召回 + rerank + 低分过滤；关系类工具则把问题变成一个**查询计划**再去图里跑 Cypher。如果检索明显不靠谱，工具层会提示「未检索到」，Agent 可换库或拒答。
 
-质量上，我用手写题集做回归，分别看「答得像不像」和「该找的文档有没有找进来」；另有一套 routing 小题验证 Agent 会不会选错库。
+质量上，我用手写题集做回归，分别看「答得像不像」和「该找的文档有没有找进来」；另有一套 routing 小题验证 Agent 会不会选错库，以及一组关系题的图 vs 文档命中对照。
 
 ### 3 分钟
 
 在 1 分钟版上，补充**为什么这么设计**：
 
-**多库而不是单库**：企业语料类型差很多——制度是长文、通讯录是表格行、后勤是 PDF 手册。混在一起用同一套切块和检索参数，表格专名和 PDF 都容易吃亏。所以 Registry 里三套库，各自 Profile。早期是一个大索引加 `kb` 标签过滤；第 10 周改成**物理分库**，每个 KB 独立 collection / index，工具一选库就直连对应存储，召回阶段不用再扫全库再 filter。对外还是 Agent 选工具，用户无感。
+**多库而不是单库**：企业语料类型差很多——制度是长文、通讯录是表格行、后勤是 PDF 手册。混在一起用同一套切块和检索参数，表格专名和 PDF 都容易吃亏。所以 Registry 里几套库，各自 Profile。早期是一个大索引加 `kb` 标签过滤；第 10 周改成**物理分库**，每个 KB 独立 collection / index，工具一选库就直连对应存储，召回阶段不用再扫全库再 filter。对外还是 Agent 选工具，用户无感。
+
+**为什么还要一个图库**：有一类问题向量检索天然做不了——「周凯的隔级上级是谁」。语料里只写了「周凯的上级是何北」「何北的上级是苏晚」，两句话分在不同段落，没有任何一段的字面或语义接近「隔级上级」，rerank 还会因为分数低把它们全滤掉。这不是召回调参能救的，是**信息本身要靠多跳拼接**。所以我把这类关系抽成图，多跳交给 Cypher 的变长路径去走。它是第四个工具，不是替代向量检索——制度条文仍然走文档 RAG。
 
 **增量入库**：以前改一个文件就要全量 embedding。现在文件没改就跳过；改了按整篇把旧块删掉再写（切块一变，旧 chunk id 对不上，按篇换更干净）；磁盘上删了的索引也清掉。向量和 BM25 一起做。`--reset` 还能全量重建。
 
@@ -66,9 +70,9 @@
 
 **拒答**：工具层 `pre_llm_refusal` 处理无 chunk / 低置信度；ReAct 终答若仍写「无法确认」再标模型拒答。`--query` 路径还会在检索后、生成前直接拒答省一次 LLM。
 
-**评测分层**：答案 golden（34 题）、检索 recall@4（31 题）、路由（6 题）、ReAct 端到端（7 题，**6/7**）分开看。
+**评测分层**：答案 golden（34 题）、检索 recall@4（31 题）、路由（9 题）、ReAct 端到端（7 题，**6/7**）、图 vs 文档对照（3 题）分开看。
 
-**局限**：题集仍小；ReAct eval 有 1 题已知 flake（复合 FAQ）；未上 Ragas / 图检索；增量入库不是跨存储事务，写到一半挂了两边可能暂时对不齐。
+**局限**：题集仍小；ReAct eval 有 1 题已知 flake（复合 FAQ）；未上 Ragas 与多模态；图谱只有三类关系、没有时效字段（人事调动后旧边不会自动失效）；增量入库不是跨存储事务，写到一半挂了几边可能暂时对不齐。
 
 ---
 
@@ -149,7 +153,7 @@ RAG 是先找材料再写答案，评测我也刻意拆成多层。考卷 34 道
 
 跑起来之后：答案层看要点和拒答；检索层看 recall@4；routing 层另 6 题只看 `--agent` 会不会选错 `search_*`。库外题不评检索，只评有没有老实说不确定。
 
-目前生产配置（Qdrant + OpenSearch）下答案 33/34，检索 31/31，路由 6/6。掉的那题是生成漏写「双人复核」，检索已经找对文档。局限我也主动说：题集不大；主 eval 不是 ReAct 全链路；要点判分对措辞敏感，更多是抓回归趋势。
+目前生产配置（Qdrant + OpenSearch + Neo4j）下答案 33/34，检索 31/31，路由 9/9。掉的那题是生成漏写「双人复核」，检索已经找对文档。局限我也主动说：题集不大；主 eval 不是 ReAct 全链路；要点判分对措辞敏感，更多是抓回归趋势。
 
 **Q：** 跑完以后报告里记什么？挂了怎么查？
 
@@ -295,9 +299,9 @@ ReAct 会把**多次工具调用**的 chunks 合并后再建引用，所以复�
 
 **A：**
 
-两套都能切。向量默认可以走本地 Chroma，生产切 `VECTOR_BACKEND=qdrant`；关键词默认 `bm25.pkl`，生产切 `BM25_BACKEND=opensearch`。检索接口一样，hybrid + RRF 行为不变。Docker 里 Qdrant、OpenSearch、Neo4j 一起起，Neo4j 业务要到第 11 周才接。
+两套都能切。向量默认可以走本地 Chroma，生产切 `VECTOR_BACKEND=qdrant`；关键词默认 `bm25.pkl`，生产切 `BM25_BACKEND=opensearch`。检索接口一样，hybrid + RRF 行为不变。Docker 里 Qdrant、OpenSearch、Neo4j 一起起，图库在第 11 周接上了 `query_relations`。
 
-每个知识库是独立索引，不是一个大库打标签。CI 没有 Docker，单测仍用 Chroma + pkl。
+每个知识库是独立索引，不是一个大库打标签。CI 没有 Docker，单测仍用 Chroma + pkl，图相关的单测只测抽取和查询规划，不连 Neo4j。
 
 **Q：** 增量入库是怎么做的？为什么不按 chunk 更新？
 
@@ -321,7 +325,59 @@ ReAct 会把**多次工具调用**的 chunks 合并后再建引用，所以复�
 
 ---
 
-### 场景 H：难点与反思
+### 场景 H：关系检索与 Graph RAG（第 11 周重点）
+
+**Q：** 为什么要引入图数据库？向量检索不够吗？
+
+**A：**
+
+不是向量检索调得不够好，是有一类问题它**结构上就答不了**。比如「周凯的隔级上级是谁」。语料里从来没有一句话写过这个，只有「周凯的上级是何北」和「何北的上级是苏晚」，还分在表格的不同行。你把 k 调大、把 rerank 关掉都没用——答案需要把两条边接起来才存在。
+
+我实测过：这三道关系题走文档 hybrid 检索，两道命中 0 条，一道命中 1 条弱相关；rerank 甚至会因为分数低把它们全滤空，最后走到拒答。换成图检索三道全中。所以我加的是**第四个工具**，不是替换向量检索，制度条文那类题仍然走文档 RAG。
+
+**Q：** 图是怎么建出来的？总不能手写 JSON 吧。
+
+**A：**
+
+对，手写 JSON 就变成 demo 了。我的原则是**语料是唯一事实源**，图必须从语料自动抽。
+
+主力是**规则 ETL**。但这里有个关键设计：不能绑死某一篇文档的列名。我在本体里定义了「列角色」和它们的同义词——「直属上级 / 上级 / 汇报对象 / manager / reports_to」都映射到 `manager` 这个角色。抽取时先认表头属于哪个角色，再按角色取值。换一篇列名不同的表，不用改代码。
+
+第二层是**实体对齐**。同一个人在通讯录里是「周凯 + 工号 XY007」，在架构文档里可能只写「周凯」，也可能只写工号。我拿通讯录当**人员主数据**建索引，把姓名和工号都归一到同一个规范名，否则图里会出现两个不连通的「周凯」，多跳直接断掉。
+
+第三层才是 **LLM 补抽**，用来捞散文里规则表达不了的关系。但它被限制得很死：只允许输出本体里定义的关系类型，越界的丢弃。审批环节的**顺序**我明确不让 LLM 抽——它很容易把顺序打乱，而有序列表的序号是确定信息，用规则读更可靠。
+
+入库也是增量的：每篇源文档在图里有个 `SourceDoc` 节点存 `file_hash`，没变就跳过；变了先把这篇 source 产生的边删掉再重新 MERGE，避免改文档后留下幽灵关系。
+
+**Q：** 查询时是让大模型写 Cypher 吗？
+
+**A：**
+
+不是，这点我专门避开了。让 LLM 直接写 Cypher 有两个问题：一是它可能写出语法对但语义错的查询，二是等于把数据库执行权交给了模型输出，注入风险没法兜底。
+
+我的做法是让 LLM 只出一个**查询计划**——一个受 Pydantic 校验的结构体，字段就几个：查什么模式（汇报线 / 依赖 / 审批链）、主体是谁、跳几跳、是否要精确跳数。Cypher 模板是代码里写死的，实体作为 `$name` 参数传进去，跳数只接受校验后的 1 到 3 的整数。这样既拿到了自然语言理解能力，又不用防注入。
+
+LLM 规划失败或超时就降级到**本体词典**：问句里有「上级 / 汇报」就走汇报线，有「隔级 / 上级的上级」就把跳数提到 2。降级路径不依赖模型，也不把流程名写死。
+
+**Q：** 图返回的结果怎么接回 Agent？
+
+**A：**
+
+这是我觉得设计上比较干净的一点：**在工具边界统一**。`query_relations` 也返回和文档检索同构的 chunk——有 text、source、score、kb 字段，只是 text 是把路径拼成的自然语言，比如「周凯 → 何北 → 苏晚，共 2 跳」。
+
+好处是 Agent 侧完全不用知道后端是 Neo4j 还是向量库，Observation 格式化、引用合并、拒答判断这些逻辑全都复用。加图库没有动 ReAct 循环一行代码，只是在 `run_kb_retrieve` 里按 `kb.backend` 分了个流。
+
+**Q：** 怎么保证 Agent 不会拿文档工具去答关系题？
+
+**A：**
+
+靠工具描述里写清楚**边界**，正反都写。`query_relations` 的描述里列了典型问法「谁的上级」「A 依赖什么」，同时 `search_policies` 和 `search_tabular` 的描述里明确写了「汇报线 / 依赖链请用 `query_relations`」。
+
+然后用路由 eval 验证，不靠感觉。我在 golden 里给这三道关系题标了 `expected_tool: query_relations`，跑下来 9 道路由题全中。这三道题还标了 `skip_direct_eval`，因为直连 RAG 那条路径根本够不到图库，让它去跑只会得到一个假的失败。
+
+---
+
+### 场景 I：难点与反思
 
 **Q：** 印象最深的难点是什么？
 
@@ -335,9 +391,9 @@ ReAct 会把**多次工具调用**的 chunks 合并后再建引用，所以复�
 
 **A：**
 
-短期：扩大 ReAct golden；更难复合题。
+短期：扩大 ReAct golden；更难复合题；给图谱补时效字段，人事调动后旧的汇报边应该失效而不是留着。
 
-接下来（第 11–12 周）：Graph RAG（Neo4j + `query_relations`）；多模态 + CRAG。
+接下来（第 12 周）：多模态检索（架构图/截图）+ CRAG 纠错检索。
 
 长期工程化：题集扩大、Ragas、入库队列和失败重试——增量现在是同步命令，还不是生产任务系统。按 `production-gap.md` 的触发条件来，不提前过度设计。
 
@@ -347,8 +403,8 @@ ReAct 会把**多次工具调用**的 chunks 合并后再建引用，所以复�
 
 | 口语说法 | 代码/文件 roughly 对应 |
 |----------|------------------------|
-| 回归题集 / 金标准题集 | `data/eval/golden.json`（34 题） |
-| 路由题集 | `data/eval/routing.json`（6 题） |
+| 回归题集 / 金标准题集 | `data/eval/golden.json`（37 题；其中 3 道图题标 `skip_direct_eval`） |
+| 路由题集 | 无独立文件，`run_routing.py` 从 golden 里筛 `expected_tool`（9 题） |
 | 关键词是否命中 | golden 里 `must_contain` → hits/miss |
 | 期望命中的文档 | `expected_sources` → recall@4 |
 | 期望工具 | `expected_tool`（routing / 部分 golden） |
@@ -360,8 +416,14 @@ ReAct 会把**多次工具调用**的 chunks 合并后再建引用，所以复�
 | **ReAct 主路径** | `query/modes/agent_react/` → `loop.run_react_agent` |
 | ReAct 端到端 eval | `tests/eval/run_react.py` + `data/eval/react_golden.json`（7 题，6/7） |
 | KB 工具 | `kb/search.py`：`build_kb_tools`、`run_kb_retrieve`、`format_chunks_observation` |
-| 知识库注册 | `kb/registry.py`（policies / tabular / pdf） |
+| 知识库注册 | `kb/registry.py`（policies / tabular / pdf / relations，带 `backend` 字段） |
 | 物理分库工厂 | `retrieval/vector_store.py`、`retrieval/bm25_store.py`（按 `kb_id`） |
+| 图本体 / 列角色 | `graph/schema.py`：`ALLOWED_RELS`、`COLUMN_ROLES`、`SCHEMA_CARD` |
+| 图抽取 | `graph/extract.py`（规则）、`graph/extract_llm.py`（补抽） |
+| 实体对齐 | `graph/identity.py`：`IdentityIndex`（通讯录当主数据） |
+| 图增量入库 | `graph/ingest.py`：`SourceDoc.file_hash` → 删该 source 的边再 MERGE |
+| 图查询计划 | `graph/plan.py`：`GraphPlan` + `infer_plan_from_lexicon` 降级 |
+| 参数化 Cypher | `graph/query.py`：`execute_plan`、`_var_len`（跳数只接受 1–3） |
 | 增量指纹 | `ingest/fingerprint.py`：`document_id` / `content_hash` |
 | 增量同步 | `ingest/run._sync_kb`：跳过 / upsert / 按 `doc_id` 删除 |
 | 路由选型（辅助） | `query/modes/agent_route/select.select_tool_names` |
@@ -369,6 +431,7 @@ ReAct 会把**多次工具调用**的 chunks 合并后再建引用，所以复�
 | 检索入口 | `query/retrieve.py` → `retrieval/engine.retrieve_with_options` |
 | rerank 串行锁 | `retrieval/rerank.py`（ReAct 并行 tool） |
 | 三路对照实验 | `tests/eval/compare.py` |
+| 图 vs 文档对照 | `tests/eval/run_graph_compare.py` |
 
 ---
 
@@ -376,13 +439,19 @@ ReAct 会把**多次工具调用**的 chunks 合并后再建引用，所以复�
 
 ```bash
 uv sync --extra dev --extra ui
+docker compose up -d                                       # Qdrant + OpenSearch + Neo4j
 uv run python -m rag_assistant.pipeline --ingest --reset   # 首次全量
 uv run python -m rag_assistant.pipeline --ingest           # 之后增量：未改跳过
+uv run python -m rag_assistant.pipeline --ingest-graph     # 关系语料 → Neo4j
 
 # 主路径：ReAct
 uv run python -m rag_assistant.pipeline --react --query "年假有多少天？怎么折现？"
 uv run python -m rag_assistant.pipeline --react --query "工号 XY003 是谁？分机多少？"
 uv run python -m rag_assistant.pipeline --react --query "报销住宿标准？打印机卡纸怎么办？"
+
+# 关系题（走 query_relations）
+uv run python -m rag_assistant.pipeline --react --query "周凯的隔级上级是谁？"
+uv run python -m rag_assistant.pipeline --react --query "订单服务间接依赖哪些服务？"
 
 # 库外拒答
 uv run python -m rag_assistant.pipeline --react --query "公司股票期权怎么行权？"
@@ -394,10 +463,11 @@ uv run python -m rag_assistant.pipeline --chat --react
 uv run python -m rag_assistant.pipeline --query "年假有多少天？"
 
 # 评测
-uv run pytest tests/ -q
+uv run pytest tests/ -q --ignore=tests/eval
 uv run python tests/eval/run.py
 uv run python tests/eval/run_routing.py
 uv run python tests/eval/run_react.py
+uv run python tests/eval/run_graph_compare.py
 ```
 
 ---
@@ -413,6 +483,7 @@ uv run python tests/eval/run_react.py
 | 2026-08-02 | **第 9 周收尾**：`run_react.py` 6/7、Gradio ReAct、learning-log 归档 |
 | 2026-08-16 | **第 10 周收尾**：Qdrant/OpenSearch 可切换、物理分库、增量 ingest；口述同步（Gradio 已是 ReAct） |
 | 2026-08-16 | **第 10 周验收**：Qdrant+OS ingest 72 chunk；golden 33/34、recall 31/31、routing 6/6；eval 空库改按 KB 汇总 |
+| 2026-08-20 | **第 11 周 Graph RAG**：新增场景 H（关系检索）；四库口径、routing 9/9、单测 61；「还没做的」移除 Graph RAG |
 
 ### 新功能迭代时更新清单
 

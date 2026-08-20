@@ -18,6 +18,8 @@
 | **CLI 同步 ingest** | 「入库就是跑一条命令」 | 队列 + worker + 状态 API + 失败重试 |
 | **全量 `--reset`** | 「改语料就重跑 ingest」 | 按 `doc_id` **增量 upsert/删除**（本仓库默认 `--ingest` 已支持；`--reset` 仍可全量） |
 | **ReAct 并行调工具** | 「Agent 越快越好」 | 本地 cross-encoder 需串行（`RLock`）；或托管 rerank API |
+| **LLM 出 `GraphPlan`** | 「Graph RAG 就是 Text2Cypher」 | 教程常让模型直接写 Cypher；生产更常见**受限计划 + 参数化模板**，或 Text2Cypher 配只读账号与语法校验（§2.9） |
+| **从文档抽取建图** | 「知识图谱都得从文本抽」 | 有 HR / CMDB 等主数据系统时**直接对接**，抽取只补文档独有的关系 |
 
 ---
 
@@ -33,7 +35,8 @@
 | 语料 ETL | 多格式 loader、按类型切块 | pypdf 直抽；无版面解析/OCR 管线 |
 | BM25 | **OpenSearch**（生产）或 `bm25.pkl`（CI） | pkl 路径仍是全库 `get_scores`；无集群 HA |
 | 向量库 | **Qdrant**（生产）或 Chroma（CI/离线） | 单机 Docker，无副本/权限模型 |
-| 入库 | 默认同步增量 `--ingest`（`doc_id` + `file_hash`） | 无异步任务队列 |
+| 图检索 | 本体 + 实体对齐 + 参数化 Cypher（不执行 LLM 写的语句） | 抽取无人工复核台；边无时效字段；无社区摘要 |
+| 入库 | 默认同步增量 `--ingest` / `--ingest-graph` | 无异步任务队列 |
 
 ---
 
@@ -68,14 +71,17 @@
 
 | | 本项目 | 业界常见 | 触发升级 |
 |--|--------|----------|----------|
-| 向量 | Chroma 本地 `data/chroma/unified` | Qdrant、Milvus、pgvector、OpenSearch kNN | 需 HA、权限、百万 chunk |
-| 关键词 | `bm25.pkl` 单文件 | **Elasticsearch / OpenSearch**（BM25 + filter 一体） | chunk > 几万 |
-| 分库 | **逻辑分库**（见下 §2.3.1） | 逻辑分库 **或** 物理分库（collection / 索引 / 实例级隔离） | 多租户强隔离、不同 embedding、独立扩缩容 |
-| 增量 | `doc_id` + `file_hash`：跳过未改、upsert 变更、删除失效 | 同左；生产常加队列与失败重试 | 多租户上传 / 日更文档 |
+| 向量 | **Qdrant**（生产）/ Chroma（CI 离线），每 KB 一个 collection | Qdrant、Milvus、pgvector、OpenSearch kNN | 需 HA、权限、百万 chunk |
+| 关键词 | **OpenSearch**（生产）/ `bm25.pkl`（CI），每 KB 一个 index | **Elasticsearch / OpenSearch**（BM25 + filter 一体） | chunk > 几万 |
+| 图 | **Neo4j** 单机 Docker | Neo4j 集群、TigerGraph、Neptune；或 PG 递归 CTE | 关系上百万边、需要因果一致读 |
+| 分库 | **物理分库**（第 10 周从逻辑分库改造，见下 §2.3.1） | 逻辑分库 **或** 物理分库（collection / 索引 / 实例级隔离） | 多租户强隔离、不同 embedding、独立扩缩容 |
+| 增量 | `doc_id` + `file_hash`：跳过未改、upsert 变更、删除失效；图侧按 `SourceDoc.file_hash` | 同左；生产常加队列与失败重试 | 多租户上传 / 日更文档 |
 
 #### 2.3.1 逻辑分库 vs 物理分库（重要）
 
-本项目 Week 8 采用的是 **逻辑分库**，不是物理分库。两者都常见，差别在「隔离发生在哪一层」。
+> **本项目已在第 10 周完成物理分库改造**。下面保留两者对照与当初选逻辑分库的理由，是为了讲清楚「什么条件下该升级」这条判断线，不是现状描述。
+
+本项目 Week 8 起步时采用的是 **逻辑分库**。两者都常见，差别在「隔离发生在哪一层」。
 
 | 维度 | 逻辑分库（本项目） | 物理分库（生产常见升级方向） |
 |------|-------------------|------------------------------|
@@ -188,13 +194,32 @@ data/chroma/policies/bm25.pkl
 
 ### 2.7 多库与 Agent 路由
 
-| | 本项目（Week 8） | 业界（Week 9+ 目标） |
-|--|------------------|----------------------|
-| 隔离方式 | **逻辑分库**（§2.3.1）；单索引 + `kb` 过滤 | 中小规模可仍逻辑；多租户 / 大库常 **物理分库** |
-| 选库 | 运维/调试 `--kb`；产品默认全库 | Agent function calling 选 `search_*` 工具 |
-| 注册表 | `kb/registry.py` 预留 `tool_name` | 每 KB 一个工具 + description；工具背后常绑**独立物理索引** |
-| 路由评测 | 分库 golden + per-item `kb` | 单库题必须选对工具；跨库题多工具 |
+| | 本项目 | 业界常见 |
+|--|--------|----------|
+| 隔离方式 | **物理分库**（§2.3.1）：每 KB 独立 collection / index | 中小规模可仍逻辑；多租户 / 大库常物理分库 |
+| 选库 | Agent function calling 选工具；`--kb` 留作运维调试 | 同左 |
+| 注册表 | `kb/registry.py`：`tool_name` + `backend`，工具直连对应后端 | 每 KB 一个工具 + description；工具背后常绑独立物理索引 |
+| 异构后端 | 同一套工具协议下混用向量库与图库（`kb.backend` 分流） | 同左；成熟系统常再加 SQL / API 型工具 |
+| 路由评测 | golden 里 `expected_tool`，routing 9/9 | 单库题必须选对工具；跨库题多工具 |
 | 歧义 | 未做澄清 | 「两个孙悟空」→ 追问或按上下文选库 |
+
+---
+
+### 2.9 关系检索 / Graph RAG
+
+| | 本项目 | 业界常见 | 触发升级 |
+|--|--------|----------|----------|
+| 建图来源 | 语料自动抽：列角色规则 ETL + LLM 补抽 | 同左；成熟场景直接对接 HR / CMDB 等**已有主数据系统** | 已有权威系统时不该从文档反推 |
+| 本体 | `schema.py` 手写三类关系 + 列角色同义词 | 正式 ontology（OWL/SHACL）或 schema registry，配版本管理 | 关系类型上几十种 |
+| 实体对齐 | 通讯录当人员主数据，姓名/工号归一 | 独立 entity resolution 服务；别名表、模糊匹配、人工仲裁队列 | 出现同名不同人、跨系统 ID |
+| 抽取质量 | 规则为主 + LLM 补抽，无人工复核 | **抽取结果进人工审核台**后才入图；记录 provenance 与置信度 | 图开始被业务决策依赖 |
+| 查询 | LLM 出受校验 `GraphPlan` → 参数化 Cypher 模板 | 同左；或 Text2Cypher + 语法校验 + 只读账号 + 超时熔断 | 需要开放式查询而非固定几种模式 |
+| 时效 | **无**：边没有生效/失效时间，人事调动后旧边不会自动过期 | 边上带 `valid_from` / `valid_to`，查询按时间点过滤 | 关系会随时间变化且需追溯历史 |
+| 规模 | 单机 Docker，十几个节点 | 集群 + 索引 + 查询超时；社区检测/摘要（Microsoft GraphRAG）用于全局性问题 | 需要「整个组织的概况」这类全局摘要题 |
+
+**为什么不让 LLM 直接写 Cypher**：Text2Cypher 在演示里很漂亮，但把数据库执行权交给了模型输出。本项目让 LLM 只填一个受 Pydantic 校验的计划结构（模式、实体、跳数），Cypher 模板写死在代码里、实体走参数绑定、跳数只接受 1–3 的整数。生产里若确实需要开放式 Text2Cypher，配套至少要有只读账号、语法校验、结果行数上限和查询超时。
+
+**规则 ETL vs 纯 LLM 抽取**：纯 LLM 抽取的问题不是抽不出来，是**不稳定且难回归**——同一篇文档两次抽取结果可能不同，顺序类信息（审批环节 1/2/3）尤其容易乱。本项目把确定性强的部分（表格、有序列表）交给规则，只让 LLM 补散文里的漏网关系，并限制它只能输出本体内的关系类型。
 
 ---
 
@@ -202,7 +227,7 @@ data/chroma/policies/bm25.pkl
 
 | | 本项目 | 业界常见 |
 |--|--------|----------|
-| 回归 | golden 30 题 + keyword + recall@k | + Ragas、抽样人工评、线上 bad case 回流 |
+| 回归 | golden 37 题 + keyword + recall@k + 路由 + 图/文档对照 | + Ragas、抽样人工评、线上 bad case 回流 |
 | 阈值 | `score_report.py` 标定拒答 | 离线分位数 + 线上拒答率/误拒率监控 |
 | 追踪 | Langfuse | 同左 + 按 `kb`/工具分桶、检索空结果率 |
 
@@ -237,8 +262,8 @@ data/chroma/policies/bm25.pkl
 
 | 序号 | 项 | 说明 | 计划周次 |
 |------|-----|------|----------|
-| P2-1 | **关系 / Graph KB** | Neo4j + `query_relations`；prose 抽取建图 | **第 11 周** |
-| P2-2 | **多模态 KB** | 截图/幻灯；`search_visual` | 第 11 周 |
+| P2-1 | **关系 / Graph KB** | Neo4j + `query_relations`；语料抽取建图、实体对齐、参数化 Cypher | **第 11 周已做** |
+| P2-2 | **多模态 KB** | 截图/幻灯；`search_visual` | 第 12 周 |
 | P2-3 | **CRAG / Self-RAG** | 挂在 Profile 上的纠错层，非另起系统 | 第 12 周 |
 | P2-4 | **HyDE / 查询扩展** | 某 Profile 内开关，before/after | 第 10–12 周可选 |
 | P2-5 | **物理分库** | 每 KB 独立向量 collection + 独立 BM25/OS 索引 | **第 10 周已做** |
@@ -250,7 +275,8 @@ data/chroma/policies/bm25.pkl
 
 - Embedding 微调  
 - 公网多租户 SaaS 部署  
-- GraphRAG 全量社区摘要（Microsoft 论文级）——第 11 周做 **Neo4j + 工具路由** 即可，不必上社区层
+- GraphRAG 全量社区摘要（Microsoft 论文级）——第 11 周做的是 **Neo4j + 工具路由**，够用；社区层要等出现「整个组织的概况是什么」这类全局摘要题才值得上
+- 图谱边的时效字段（`valid_from` / `valid_to`）——语料是静态快照时收益低，真接 HR 系统时必须补
 
 ---
 
@@ -266,10 +292,13 @@ data/chroma/policies/bm25.pkl
          ├──► P1 分库 eval / run.py --kb
          │
          ▼
-       第 10 生产存储改造（见 production-upgrade.md）
+       第 10 生产存储改造（见 production-upgrade.md）✅
          │
          ▼
-       第 11 Graph RAG（Neo4j）→ 第 12 多模态 + CRAG
+       第 11 Graph RAG（Neo4j，见 week11-graph-rag.md）✅
+         │
+         ▼
+       第 12 多模态 + CRAG + 总复盘  ← 下一步
 ```
 
 ---
@@ -290,5 +319,6 @@ data/chroma/policies/bm25.pkl
 - [入库流水线](./ingest-pipeline.md)  
 - [问答流水线](./query-pipeline.md)  
 - [Chunk 数据模型](./chunk-data-model.md)  
+- [第 11 周 Graph RAG](./week11-graph-rag.md)  
 - [关键方案说明](./design-choices.md)  
 - [学习计划](../ai-app-engineer-2month-plan.md)  

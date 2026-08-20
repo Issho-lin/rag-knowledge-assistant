@@ -80,13 +80,14 @@ uv run python tests/eval/run_graph_compare.py
 
 LLM 规划失败时用本体词典降级（「上级/依赖/审批链」），**不**把流程名写死成「费用报销」。
 
-### 进度（2026-08-16）
+### 进度（2026-08-20 验收）
 
 | 项 | 结果 |
 |----|------|
 | `--ingest-graph` | Person=10 Service=5 Step=4 边=16 |
-| 单测 | 57 passed |
+| 单测 | **61** passed（`--ignore=tests/eval`；图单测不连 Neo4j） |
 | routing | **9/9**（含 3 道关系题 → `query_relations`） |
+| golden | 33/34（3 道关系题标 `skip_direct_eval` 不计） |
 | ReAct 手测 3 题 | 均选 `query_relations` 且答对 |
 
 **before/after**（`run_graph_compare.py`：文档 hybrid vs Cypher，不调生成）
@@ -111,13 +112,16 @@ LLM 规划失败时用本体词典降级（「上级/依赖/审批链」），**
 | 周 | 主题 |
 |----|------|
 | 第 10 周 | 生产存储（Qdrant + OpenSearch）已验收 |
-| **第 11 周** | **本文档（Graph RAG）← 当前** |
-| 第 12 周 | 多模态 + CRAG + 12 周总复盘 |
+| **第 11 周** | **本文档（Graph RAG）已验收** |
+| 第 12 周 | 多模态 + CRAG + 12 周总复盘 ← 下一步 |
 
 ---
 
 ## 相关文档
 
+- [系统架构](./architecture.md) — 四个工具与模块职责
+- [入库流水线](./ingest-pipeline.md) — 文档链路（图链路见本文）
+- [问答流水线](./query-pipeline.md) — 「图检索分支」一节
 - [第 10 周存储改造](./production-upgrade.md)
-- [demo vs 生产](./production-gap.md)
+- [demo vs 生产](./production-gap.md) — §2.9 关系检索对照
 - [12 周总计划](../ai-app-engineer-2month-plan.md)

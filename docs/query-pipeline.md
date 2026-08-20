@@ -17,21 +17,28 @@
 flowchart LR
     Q[用户问题] --> RW[rewrite_for_retrieval]
     RW --> A{模式}
-    A -->|query| D[retrieve_chunks]
-    A -->|agent| R[select_tool_names] --> D1[run_kb_retrieve 单库]
-    A -->|react| X[create_agent 循环] --> T[工具 run_kb_retrieve]
-    D --> PA[produce_answer]
-    D1 --> PA
-    T --> OBS[片段 Observation]
+    A -->|query| D[retrieve_chunks 跨向量库]
+    A -->|agent| R[select_tool_names] --> KR[run_kb_retrieve]
+    A -->|react| X[create_agent 循环] --> KR
+    KR --> B{kb.backend}
+    B -->|vector| V[retrieve_chunks 单库]
+    B -->|graph| G[query_relations 参数化 Cypher]
+    D --> C[chunks]
+    V --> C
+    G --> C
+    C -->|query / agent| PA[produce_answer]
+    PA --> QR[QueryResult]
+    C -->|react| OBS[片段 Observation]
     OBS --> X
     X --> OUT[Agent 最终答复]
-    PA --> QR[QueryResult]
     OUT --> QR
 ```
 
+> **`--query` 覆盖不到关系题**：它直连 `retrieve_chunks`，而跨库融合只遍历 `list_vector_kbs()`，图库不在其中。`--agent` 与 `--react` 都经 `run_kb_retrieve`，会按 `kb.backend` 分流到 Neo4j，所以两者都能答关系题——差别只在 `--agent` 选一个工具、`--react` 可以图 + 文档混用。
+
 ## 共享检索流水线
 
-以下步骤对 `--query`、`--agent`、ReAct **工具内部**均适用（经 `retrieve_chunks` → `retrieve_with_options`）：
+以下步骤对 `--query`、`--agent`、ReAct **工具内部**均适用（经 `retrieve_chunks` → `retrieve_with_options`）。`query_relations` 不走这条线，见下方「图检索分支」：
 
 ```mermaid
 flowchart TD
@@ -66,6 +73,20 @@ flowchart TD
 | 低分过滤 | `retrieval/filters.py` | rerank 路径用 `REFUSE_MIN_RERANK_SCORE` |
 | 父文档扩展 | `retrieval/context.py` | policies Profile 默认开 |
 | 工具层拒答提示 | `kb/search.py` | `pre_llm_refusal` → Observation「未检索到相关片段」 |
+
+### 图检索分支（`query_relations`）
+
+`kb.backend == "graph"` 时 `run_kb_retrieve` 转到 `graph/query.query_relations`，**不做** embedding、BM25、RRF、rerank，因为图查询本身是精确匹配，没有「相似度」可排：
+
+| 步骤 | 模块 | 说明 |
+|------|------|------|
+| 取目录 | `graph/query._catalog` | 从 Neo4j 读人名/工号、服务名、流程名，作为规划与实体链接的候选集 |
+| 出计划 | `graph/plan.plan_graph_query` | cheap LLM 产出 `GraphPlan(pattern, entity, hops, exact_hops, process)`，经 Pydantic 校验；失败降级 `infer_plan_from_lexicon` |
+| 实体链接 | `graph/identity.IdentityIndex` | 把「周凯」「XY003」这类写法统一到图里的规范名 |
+| 执行 | `graph/query.execute_plan` | 按 pattern 选 Cypher 模板，实体走 `$name` 参数，跳数只来自校验后的 1–3 整数 |
+| 转 chunk | `graph/query._chunks` | 把路径拼成自然语言（`周凯 → 何北 → 苏晚`），伪造 `score` 递减，`kb=relations` |
+
+**LLM 不写 Cypher**，只填计划里的几个受限字段；模板是代码里写死的。这样既拿到自然语言理解能力，又不用防注入。
 
 ### 关键参数
 
@@ -102,8 +123,9 @@ flowchart TD
 
 | 能力 | 谁负责 | 适用 |
 |------|--------|------|
-| **跨库拆题 + 选库** | ReAct Agent（调不同 `search_*` 工具） | 复合问「报销 + 打印机」 |
+| **跨库拆题 + 选库** | ReAct Agent（调不同 `search_*` / `query_relations` 工具） | 复合问「报销 + 打印机」、「谁审批 + 审批标准」 |
 | **单库内拆句检索** | `decompose_for_retrieval` | `--query` / `--agent` / 工具内检索；默认关 |
+| **多跳关系展开** | Cypher 变长路径 `*1..n` | 隔级上级、间接依赖；不靠拆句 |
 
 ## 检索 chunk 结构
 
@@ -111,11 +133,13 @@ flowchart TD
 
 ## Eval 说明
 
-- **`tests/eval/run.py`**：固定走 `retrieve_chunks` + `produce_answer`（测检索与生成，**不是** ReAct 端到端）
-- **`tests/eval/run_routing.py`**：只测 `--agent` 的 `select_tool_names`
+- **`tests/eval/run.py`**：固定走 `retrieve_chunks` + `produce_answer`（测检索与生成，**不是** ReAct 端到端）；标了 `skip_direct_eval` 的关系题会跳过，因为这条路径够不到图库
+- **`tests/eval/run_routing.py`**：只测 `--agent` 的 `select_tool_names`，含关系题是否选中 `query_relations`
+- **`tests/eval/run_graph_compare.py`**：同一道关系题分别跑文档 hybrid 检索与图检索，对比命中，不调生成
 
 ## 相关文档
 
 - [系统架构](./architecture.md)
 - [入库流水线](./ingest-pipeline.md)
+- [第 11 周 Graph RAG](./week11-graph-rag.md)
 - [关键方案说明](./design-choices.md)

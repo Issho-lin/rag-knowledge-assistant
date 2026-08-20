@@ -74,6 +74,24 @@
 - 处理：`rm -rf .venv && uv venv && uv sync --extra dev --extra ui`；日常优先 `uv run` 少依赖 activate
 - 验证：`echo $VIRTUAL_ENV` 指向当前项目；`uv sync --extra dev --extra ui` 无 warning
 
+### 多跳关系题被 rerank 低分过滤滤空，最后走到拒答
+- 时间/周次：2026-08-16 / Week 11
+- 当时在做：写 `run_graph_compare.py`，想量化图检索相对文档检索的收益
+- 现象：「周凯的隔级上级是谁？」「订单服务间接依赖哪些服务？」走文档 hybrid 检索命中 **0** 条，链路直接走到拒答；「报销审批链有哪些环节？」只命中 1 条弱相关
+- 如何发现：对照脚本输出；回查语料确认「周凯的上级是何北」「何北的上级是苏晚」两条事实**都在库里**，不是语料缺失
+- 根因：答案要跨两条边拼接才成立，没有任何**单个** chunk 在字面或语义上接近「隔级上级」；召回来的碎片经 cross-encoder 打分后低于 `REFUSE_MIN_RERANK_SCORE`，被 `filter_chunks` 全滤掉
+- 处理：认定这类题不该靠调大 k 或关 rerank 硬救——那只会放低分噪音进来。改由 Neo4j + `query_relations` 承接多跳；golden 里给这三题标 `skip_direct_eval`，避免直连 eval 报一个本来就够不到图库的假失败
+- 验证：图检索三题 3/3 命中；routing 9/9，三道关系题都选中 `query_relations`
+
+### 首版 Graph RAG 绑死了练习语料，是 demo 不是生产
+- 时间/周次：2026-08-16 / Week 11
+- 当时在做：第一版 `ingest-graph` + `query_relations`，三道演示题已经能答对
+- 现象：能跑通，但换个写法就废——抽取直接按「直属上级」这个具体表头取值，意图判断是一串关键词 if-else，审批链的流程名写死成「费用报销」
+- 如何发现：被追问「这是实际生产的处理方法，还是针对编造语料做的处理」，逐条对照后确认是后者：规则写在了这三张表的**数据形态**上，没有抽象层
+- 根因：把「让演示题通过」当成了完成标准。演示题通过和方法可迁移是两件事，前者不蕴含后者
+- 处理：补 `graph/schema.py` 定义本体——允许的关系类型、列角色同义词（「直属上级 / 上级 / 汇报对象 / manager」都映射到同一角色）；`graph/identity.py` 以通讯录为人员主数据做工号/姓名对齐；查询改为 LLM 只出受校验的 `GraphPlan`，Cypher 用代码里的参数化模板，规划失败降级本体词典且不写死流程名
+- 验证：单测 61 passed；全量重建 Person=10 / Service=5 / Step=4 / 边=16；手测「周凯的隔级上级」日志为 `pattern=reports_to hops=2`，答案仍是苏晚
+
 ### ReAct 并行调工具 + 本地 rerank 导致进程崩溃（exit 139）
 - 时间/周次：2026-08-02 / Week 9
 - 当时在做：复合题 `--react`（报销 + 打印机），Agent 一次发出多个 tool_call
