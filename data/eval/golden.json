@@ -277,5 +277,32 @@
     "kb": "policies",
     "expected_tool": "search_policies",
     "notes": "Week8 分库专项；仅 policies KB；与 leave-annual 同题对照"
+  },
+  {
+    "id": "graph-zhoukai-skip-level",
+    "question": "周凯的隔级上级是谁？",
+    "must_contain": ["苏晚"],
+    "expected_tool": "query_relations",
+    "expect_refuse": false,
+    "skip_direct_eval": true,
+    "notes": "第 11 周；2-hop 汇报线；不走直连 RAG eval"
+  },
+  {
+    "id": "graph-order-service-deps",
+    "question": "订单服务间接依赖哪些服务？",
+    "must_contain": ["账户服务"],
+    "expected_tool": "query_relations",
+    "expect_refuse": false,
+    "skip_direct_eval": true,
+    "notes": "第 11 周；DEPENDS_ON 2-hop"
+  },
+  {
+    "id": "graph-expense-approval",
+    "question": "报销审批链有哪些环节？",
+    "must_contain": ["林舒"],
+    "expected_tool": "query_relations",
+    "expect_refuse": false,
+    "skip_direct_eval": true,
+    "notes": "第 11 周；审批链"
   }
 ]

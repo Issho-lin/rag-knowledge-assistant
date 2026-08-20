@@ -67,7 +67,7 @@ def run_react_agent(
 ) -> ReactAgentResult:
     """ReAct 循环：Agent 自行决定调用哪些 KB 工具，并综合 Observation 作答。"""
     context = KbToolRunContext()  # 空记账本；工具执行时往 results 里 append
-    tools = build_kb_tools(  # 为 policies/tabular/pdf 各建一个 StructuredTool
+    tools = build_kb_tools(  # policies/tabular/pdf/relations 各一个 StructuredTool
         k=k,
         retrieve=retrieve,
         use_rerank=use_rerank,

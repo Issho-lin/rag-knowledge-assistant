@@ -45,11 +45,57 @@ docker compose ps                    # 确认 neo4j healthy
 | # | 交付 | 验收 |
 |---|------|------|
 | 1 | prose 语料（组织架构、系统依赖、制度里的审批表） | 与通讯录可对齐 |
-| 2 | `ingest-graph`：规则 ETL + 可选 LLM 补抽 → **写 Neo4j** | 非 JSON 文件为唯一源 |
+| 2 | `ingest-graph`：列角色规则 ETL + LLM 补抽 → Neo4j 增量 | 非 JSON 为唯一源 |
 | 3 | `query_relations`：Cypher 查询，返回 Observation | 手测 3 道关系题 |
-| 4 | Registry 第四库 `relations` + `build_agent_tools` | ReAct 能选用 |
+| 4 | Registry 第四库 `relations` + `build_kb_tools` | ReAct 能选用 |
 | 5 | 路由 eval：关系题 → `query_relations`；制度题 → `search_policies` | routing 通过 |
-| 6 | before/after：无图工具 vs 有图工具（关系题） | 记录对比 |
+| 6 | before/after：无图工具 vs 有图工具（关系题） | `tests/eval/run_graph_compare.py` |
+
+**命令**
+
+```bash
+uv sync --extra prod
+docker compose up -d
+uv run python -m rag_assistant.pipeline --ingest-graph
+uv run python -m rag_assistant.pipeline --react --query "周凯的隔级上级是谁？"
+uv run python tests/eval/run_routing.py
+uv run python tests/eval/run_graph_compare.py
+```
+
+## 生产形态（本周实现）
+
+```text
+语料 MD/CSV
+  ├─ 规则 ETL：按「列角色同义词」认表（姓名/工号/上级/依赖/环节…），不是某一篇的列名
+  ├─ 人员主数据：通讯录对齐工号/姓名
+  ├─ LLM 补抽：只允许本体关系类型；审批顺序仍由有序列表规则抽
+  └─ 按 SourceDoc.file_hash 增量；变更先删该 source 的边再 MERGE
+        ▼
+     Neo4j
+        ▼
+问句 → 便宜模型生成 GraphPlan（pattern/entity/hops）
+        → 实体链接（姓名/工号）
+        → 仅跑参数化 Cypher 模板（禁止把 LLM 生成的 Cypher 直接执行）
+```
+
+LLM 规划失败时用本体词典降级（「上级/依赖/审批链」），**不**把流程名写死成「费用报销」。
+
+### 进度（2026-08-16）
+
+| 项 | 结果 |
+|----|------|
+| `--ingest-graph` | Person=10 Service=5 Step=4 边=16 |
+| 单测 | 57 passed |
+| routing | **9/9**（含 3 道关系题 → `query_relations`） |
+| ReAct 手测 3 题 | 均选 `query_relations` 且答对 |
+
+**before/after**（`run_graph_compare.py`：文档 hybrid vs Cypher，不调生成）
+
+| 问题 | 文档检索命中 | 图检索 |
+|------|-------------|--------|
+| 周凯的隔级上级是谁？ | 0（rerank 滤空） | 周凯 → 何北 → **苏晚** |
+| 订单服务间接依赖哪些服务？ | 0 | 含 2 跳 **账户服务** |
+| 报销审批链有哪些环节？ | 1（弱相关） | 四环含 **林舒 / 苏晚** |
 
 ---
 
@@ -64,8 +110,8 @@ docker compose ps                    # 确认 neo4j healthy
 
 | 周 | 主题 |
 |----|------|
-| 第 10 周 | 生产存储（Qdrant + OpenSearch）← 当前 |
-| **第 11 周** | **本文档（Graph RAG）** |
+| 第 10 周 | 生产存储（Qdrant + OpenSearch）已验收 |
+| **第 11 周** | **本文档（Graph RAG）← 当前** |
 | 第 12 周 | 多模态 + CRAG + 12 周总复盘 |
 
 ---

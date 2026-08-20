@@ -16,6 +16,7 @@ def test_get_kb_by_tool_name():
     assert get_kb_by_tool_name("search_policies").id == "policies"
     assert get_kb_by_tool_name("search_tabular").id == "tabular"
     assert get_kb_by_tool_name("search_pdf_handbook").id == "pdf"
+    assert get_kb_by_tool_name("query_relations").id == "relations"
 
 
 def test_resolve_tool_to_kb_id():
@@ -24,7 +25,12 @@ def test_resolve_tool_to_kb_id():
 
 def test_build_kb_tools_names():
     names = {t.name for t in build_kb_tools()}
-    assert names == {"search_policies", "search_tabular", "search_pdf_handbook"}
+    assert names == {
+        "search_policies",
+        "search_tabular",
+        "search_pdf_handbook",
+        "query_relations",
+    }
 
 
 def test_format_chunks_observation_empty():

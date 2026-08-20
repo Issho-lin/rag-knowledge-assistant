@@ -88,9 +88,14 @@ def main() -> None:
     )
     parser.add_argument("--ingest", action="store_true", help="增量入库（未改文件跳过 embedding）")
     parser.add_argument(
+        "--ingest-graph",
+        action="store_true",
+        help="从 prose/CSV 抽取关系写入 Neo4j（第 11 周 Graph RAG）",
+    )
+    parser.add_argument(
         "--reset",
         action="store_true",
-        help="配合 --ingest：清空各 KB 索引后全量重建",
+        help="配合 --ingest：清空各 KB 索引后全量重建；配合 --ingest-graph：清空图后重建",
     )
     parser.add_argument(
         "--only",
@@ -149,6 +154,10 @@ def main() -> None:
     try:
         if args.ingest:
             ingest(reset=args.reset, only=args.only)
+        elif args.ingest_graph:
+            from .graph.ingest import ingest_graph
+
+            ingest_graph(reset=args.reset)
         elif args.chat:
             chat(
                 k=args.k,

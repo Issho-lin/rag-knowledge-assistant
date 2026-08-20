@@ -49,6 +49,7 @@ def run(
 ) -> Path:
     configure_logging()
     items = json.loads(_GOLDEN.read_text(encoding="utf-8"))
+    items = [i for i in items if not i.get("skip_direct_eval")]
     if limit is not None:
         items = items[:limit]
 

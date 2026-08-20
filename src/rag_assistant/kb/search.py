@@ -81,9 +81,25 @@ def run_kb_retrieve(
     use_rerank: bool | None = None,
 ) -> ToolSearchResult:
     """在指定 KB 内检索，返回片段（ReAct 工具与 --agent 的统一检索入口）。"""
+    kb = get_kb(kb_id)
+    if kb.backend == "graph":
+        from ..graph.query import query_relations
+
+        chunks = query_relations(query, k=k)
+        reason = pre_llm_refusal(chunks, use_rerank=False)
+        if reason == RefusalReason.NO_CHUNKS:
+            chunks = []
+        return ToolSearchResult(
+            kb_id=kb.id,
+            tool_name=kb.tool_name,
+            query=query,
+            chunks=chunks,
+            refused=reason is not None,
+            refusal_reason=reason,
+        )
+
     from ..query.retrieve import retrieve_chunks
 
-    kb = get_kb(kb_id)
     do_rerank = get_settings().rerank_enabled if use_rerank is None else use_rerank
     chunks = retrieve_chunks(
         query,

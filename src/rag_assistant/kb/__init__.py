@@ -7,6 +7,7 @@ from .registry import (
     get_kb_by_tool_name,
     kb_profile_for_doc,
     list_kbs,
+    list_vector_kbs,
     resolve_kb_id,
 )
 from .storage import total_bm25_count, total_vector_count
@@ -22,6 +23,7 @@ __all__ = [
     "get_kb_by_tool_name",
     "kb_profile_for_doc",
     "list_kbs",
+    "list_vector_kbs",
     "resolve_kb_id",
     "total_bm25_count",
     "total_vector_count",

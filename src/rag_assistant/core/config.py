@@ -48,10 +48,12 @@ class Settings(BaseSettings):
     opensearch_url: str = Field("http://localhost:9200", alias="OPENSEARCH_URL")
     opensearch_index: str = Field("corpus", alias="OPENSEARCH_INDEX")
 
-    # Neo4j Graph RAG（Phase 11；ingest-graph / query_relations 待实现）
+    # Neo4j Graph RAG（--ingest-graph / query_relations）
     neo4j_uri: str = Field("bolt://localhost:7687", alias="NEO4J_URI")
     neo4j_user: str = Field("neo4j", alias="NEO4J_USER")
     neo4j_password: str = Field("changeme", alias="NEO4J_PASSWORD")
+    graph_llm_extract: bool = Field(True, alias="GRAPH_LLM_EXTRACT")
+    graph_query_planner: bool = Field(True, alias="GRAPH_QUERY_PLANNER")
 
 
 _settings: Settings | None = None

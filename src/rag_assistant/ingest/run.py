@@ -11,7 +11,7 @@ from pathlib import Path
 from ..core.config import get_settings
 from ..core.logging import configure_logging, get_logger
 from ..core.paths import BM25_PATH, UNIFIED_CHROMA, bm25_path_for_kb, chroma_path_for_kb
-from ..kb import kb_profile_for_doc, list_kbs, resolve_kb_id
+from ..kb import kb_profile_for_doc, list_vector_kbs, resolve_kb_id
 from ..retrieval.bm25_store import create_bm25_store
 from ..retrieval.opensearch_bm25 import OpenSearchBM25Store
 from ..retrieval.metadata import build_chunk_metadata
@@ -67,7 +67,7 @@ def load_all_documents(only: str | None = None) -> list[Document]:
 def _legacy_storage_names() -> list[str]:
     """逻辑分库遗留的单一 collection / index 名（reset 时删除）。"""
     s = get_settings()
-    kb_ids = {kb.id for kb in list_kbs()}
+    kb_ids = {kb.id for kb in list_vector_kbs()}
     names: list[str] = []
     if s.qdrant_collection not in kb_ids:
         names.append(s.qdrant_collection)
@@ -80,14 +80,14 @@ def _reset_bm25_index() -> None:
     """按 KB 清空关键词索引（含遗留统一 index）。"""
     s = get_settings()
     if s.bm25_backend.lower() == "opensearch":
-        names = [kb.id for kb in list_kbs()] + _legacy_storage_names()
+        names = [kb.id for kb in list_vector_kbs()] + _legacy_storage_names()
         for name in names:
             OpenSearchBM25Store(index_name=name).delete_index()
         return
     if BM25_PATH.is_file():
         BM25_PATH.unlink()
         log.info("ingest.reset_bm25_pkl", path=str(BM25_PATH))
-    for kb in list_kbs():
+    for kb in list_vector_kbs():
         path = bm25_path_for_kb(kb.id)
         if path.is_file():
             path.unlink()
@@ -101,7 +101,7 @@ def _reset_vector_store() -> None:
         from qdrant_client import QdrantClient
 
         client = QdrantClient(url=s.qdrant_url)
-        names = [kb.id for kb in list_kbs()] + _legacy_storage_names()
+        names = [kb.id for kb in list_vector_kbs()] + _legacy_storage_names()
         for name in names:
             if client.collection_exists(name):
                 client.delete_collection(name)
@@ -110,7 +110,7 @@ def _reset_vector_store() -> None:
     if UNIFIED_CHROMA.exists():
         shutil.rmtree(UNIFIED_CHROMA)
         log.info("ingest.reset_chroma", path=str(UNIFIED_CHROMA))
-    for kb in list_kbs():
+    for kb in list_vector_kbs():
         path = chroma_path_for_kb(kb.id)
         if path.exists():
             shutil.rmtree(path)
@@ -246,7 +246,7 @@ def ingest(*, reset: bool = False, only: str | None = None) -> int:
     total = 0
     skipped = upserted = deleted = 0
     kb_counts: dict[str, int] = {}
-    for kb in list_kbs():
+    for kb in list_vector_kbs():
         written, skip_n, upsert_n, delete_n = _sync_kb(
             kb.id,
             live_by_kb.get(kb.id, {}),

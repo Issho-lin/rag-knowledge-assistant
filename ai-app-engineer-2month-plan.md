@@ -407,10 +407,10 @@ Qdrant/OpenSearch   query_relations           search_visual
 **唯一执行文档**：[`docs/week11-graph-rag.md`](docs/week11-graph-rag.md)
 
 **必做**：
-- [ ] prose 语料 + `ingest-graph` → Neo4j
-- [ ] `query_relations` + ReAct 第四工具
-- [ ] 路由 eval：关系题 vs 制度题
-- [ ] before/after 关系题
+- [x] prose 语料 + `ingest-graph` → Neo4j
+- [x] `query_relations` + ReAct 第四工具
+- [x] 路由 eval：关系题 vs 制度题（9/9）
+- [x] before/after 关系题（`run_graph_compare.py`）
 
 **产出**：图工具挂 Agent；能讲清「文档 RAG vs 图 RAG」分工。
 

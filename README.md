@@ -25,16 +25,15 @@
 
 员工用自然语言问内部问题；系统从多库语料 **混合检索 + 重排** 后作答，带引用；低置信度 **拒答**；支持 **多轮改写**、**Agent 工具路由** 与 **ReAct**。
 
-## 当前：第 10 周已验收（生产存储）
+## 当前：第 11 周 Graph RAG（Neo4j）
 
 | 能力 | 说明 |
 |------|------|
-| 语料 | `internal/`（MD/HTML/CSV）+ `kb_pdf/`（PDF）；约 14 篇 → 72 chunk |
-| 多库 | KB Registry（policies / tabular / pdf）；**物理分库** + Profile |
-| 入库 | 默认 `--ingest` 增量（`doc_id` + `file_hash`）；`--reset` 全量 |
-| 检索 | hybrid + RRF + rerank；生产 Qdrant + OpenSearch，CI 用 Chroma + pkl |
-| 问答路径 | `--query` 直连 · `--agent` 路由单库 · **`--react` ReAct（主路径）** |
-| 界面 | CLI `--chat --react`；Gradio（ReAct） |
+| 语料 | 文档库 + `kb_graph/`（汇报线 / 依赖 / 审批链）；人员与通讯录对齐 |
+| 多库 | policies / tabular / pdf（向量）+ **relations（Neo4j）** |
+| 入库 | `--ingest` 文档增量；`--ingest-graph` 抽关系写 Neo4j |
+| 检索 | 文档题 hybrid；关系题 `query_relations`（Cypher，含 2-hop） |
+| 问答路径 | `--query` 直连 · `--agent` 路由 · **`--react` 主路径** |
 
 ## 布局
 
@@ -42,7 +41,8 @@
 src/rag_assistant/
   cli.py, ui.py
   core/          # 配置、日志、LLM
-  ingest/        # 入库
+  ingest/        # 文档入库
+  graph/         # Neo4j 抽取 / 查询
   kb/            # 注册表、Profile、search 工具
   retrieval/     # 向量、BM25、hybrid、rerank、engine
   answer/        # generate、refusal
@@ -62,7 +62,9 @@ docker compose up -d   # Qdrant + OpenSearch + Neo4j（后两者第 10/11 周再
 cp .env.example .env   # OPENAI_API_KEY；VECTOR_BACKEND=qdrant
 uv sync --extra dev --extra ui --extra prod
 uv run python -m rag_assistant.pipeline --ingest --reset   # 首次全量；之后只需 --ingest
+uv run python -m rag_assistant.pipeline --ingest-graph     # 第 11 周：关系写入 Neo4j
 uv run python -m rag_assistant.pipeline --react --query "年假有多少天？"
+uv run python -m rag_assistant.pipeline --react --query "周凯的隔级上级是谁？"
 ```
 
 ### 离线 / CI 模式（Chroma，默认）

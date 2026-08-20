@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
+from typing import Literal
 
 from ..ingest.loaders import Document
-from .profiles import KBProfile, PDF_PROFILE, POLICIES_PROFILE, TABULAR_PROFILE
+from .profiles import COMMON_PROFILE, KBProfile, PDF_PROFILE, POLICIES_PROFILE, TABULAR_PROFILE
+
+# vector=Qdrant/Chroma+BM25；graph=Neo4j，不写向量库
+KBBackend = Literal["vector", "graph"]
 
 
 @dataclass(frozen=True)
@@ -17,6 +20,7 @@ class KnowledgeBase:
     tool_name: str  # LangChain StructuredTool.name，如 search_policies
     description: str  # 写入工具 description，供 Agent 理解边界
     corpus_names: tuple[str, ...] = ()  # 空 = 由 resolve_kb_id 按文档类型路由
+    backend: KBBackend = "vector"
 
 
 def _doc_corpus_name(doc: Document) -> str:
@@ -35,6 +39,8 @@ def resolve_kb_id(doc: Document) -> str:
     corpus = _doc_corpus_name(doc)
 
     # 根据语料类型和路径归入 KB
+    if corpus == "kb_graph":
+        return "relations"
     if kind == "csv" or source.endswith(".csv"):
         return "tabular"
     if kind == "pdf" or source.endswith(".pdf"):
@@ -52,7 +58,7 @@ _REGISTRY: dict[str, KnowledgeBase] = {
         tool_name="search_policies",
         description=(
             "公司制度、FAQ、SOP、IT/安全/差旅/入职等在线 MD/HTML 文档。"
-            "不适用：表格行数据、PDF 手册、园区后勤/访客临停停车费率/办公设备操作（后两者在 PDF 手册）。"
+            "不适用：表格行数据、PDF 手册、汇报线/服务依赖/审批链（用 query_relations）。"
         ),
         corpus_names=("internal",),
     ),
@@ -61,7 +67,10 @@ _REGISTRY: dict[str, KnowledgeBase] = {
         name="表格数据",
         profile=TABULAR_PROFILE,
         tool_name="search_tabular",
-        description="按行存储的结构化表格（CSV 等），适合字段精确匹配。demo 语料含通讯录，亦可用于设备清单、报销明细等。",
+        description=(
+            "按行存储的结构化表格（CSV 等），适合工号/分机/邮箱等字段精确匹配。"
+            "不适用：谁向谁汇报、隔级上级、系统依赖链（用 query_relations）。"
+        ),
         corpus_names=("internal",),
     ),
     "pdf": KnowledgeBase(
@@ -74,6 +83,19 @@ _REGISTRY: dict[str, KnowledgeBase] = {
             "不适用：在线 MD/HTML 制度文档。"
         ),
         corpus_names=("kb_pdf",),
+    ),
+    "relations": KnowledgeBase(
+        id="relations",
+        name="关系图谱",
+        profile=COMMON_PROFILE,
+        tool_name="query_relations",
+        description=(
+            "组织汇报线、隔级上级、系统/服务依赖、审批链等多跳关系。"
+            "问「谁的上级」「A 依赖什么」「报销审批有哪些环节」时用本工具。"
+            "不适用：年假天数、报销额度等制度条文，也不适用于工号分机查询。"
+        ),
+        corpus_names=("kb_graph",),
+        backend="graph",
     ),
 }
 
@@ -98,6 +120,11 @@ def get_kb_by_tool_name(tool_name: str) -> KnowledgeBase:
 def list_kbs() -> list[KnowledgeBase]:
     """获取所有知识库配置；``build_kb_tools`` 据此生成 ReAct 工具列表。"""
     return list(_REGISTRY.values())
+
+
+def list_vector_kbs() -> list[KnowledgeBase]:
+    """仅向量/BM25 物理库（ingest 与跨库检索用；排除 Neo4j）。"""
+    return [kb for kb in list_kbs() if kb.backend == "vector"]
 
 
 def kb_profile_for_doc(doc: Document) -> KBProfile:

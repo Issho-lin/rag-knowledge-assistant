@@ -6,7 +6,7 @@ from typing import Any, Callable
 
 from ..core.config import get_settings
 from ..core.logging import get_logger
-from ..kb.registry import list_kbs
+from ..kb.registry import list_vector_kbs
 from ..query.preprocess.decompose import decompose_for_retrieval
 from .bm25_store import create_bm25_store
 from .context import expand_parent_context
@@ -66,7 +66,7 @@ def _retrieve_one_query(
             kb_id=kb.id,
             metadata_filter=metadata_filter,
         )
-        for kb in list_kbs()
+        for kb in list_vector_kbs()
     ]
     return rrf_fuse(per_kb, k=k)
 
