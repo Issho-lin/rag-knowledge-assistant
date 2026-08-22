@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
+import json
 
 from ..core.config import get_settings
 from ..core.logging import configure_logging, get_logger
@@ -12,6 +14,7 @@ from ..ingest.run import discover_corpus_roots
 from .client import neo4j_session
 from .extract import Triple, extract_all, extract_people_from_csv
 from .schema import REL_DEPENDS_ON, REL_NEXT, REL_REPORTS_TO
+from .models import GraphDocument
 
 log = get_logger(__name__)
 
@@ -86,6 +89,58 @@ def _write_people(session, people) -> None:
             title=p.title,
             source=p.source,
         )
+
+
+def _safe_label(value: str) -> str:
+    value = re.sub(r"[^A-Za-z0-9_]", "_", value or "Entity")
+    return value[:63].strip("_") or "Entity"
+
+
+def _safe_rel(value: str) -> str:
+    value = re.sub(r"[^A-Za-z0-9_]", "_", value or "RELATED_TO")
+    return value[:63].strip("_") or "RELATED_TO"
+
+
+def _write_graph_documents(session, documents: list[GraphDocument]) -> None:
+    """写入 LLM 自动发现的任意实体/关系，业务类型不在代码中枚举。"""
+    for document in documents:
+        for entity in document.entities:
+            label = _safe_label(entity.type)
+            session.run(
+                f"""
+                MERGE (n:Entity:{label} {{name: $name}})
+                SET n.properties_json = $properties_json,
+                    n.source = $source,
+                    n.evidence = $evidence,
+                    n.confidence = $confidence
+                """,
+                name=entity.id,
+                properties_json=json.dumps(entity.properties, ensure_ascii=False),
+                source=entity.source,
+                evidence=entity.evidence,
+                confidence=entity.confidence,
+            )
+        for relation in document.relations:
+            rel = _safe_rel(relation.relation)
+            session.run(
+                f"""
+                MERGE (a:Entity {{name: $source}})
+                MERGE (b:Entity {{name: $target}})
+                MERGE (a)-[r:{rel}]->(b)
+                SET r.source = $doc_source,
+                    r.evidence = $evidence,
+                    r.properties_json = $properties_json,
+                    r.confidence = $confidence,
+                    r.extractor = $extractor
+                """,
+                source=relation.source_id,
+                target=relation.target_id,
+                doc_source=relation.source,
+                evidence=relation.evidence,
+                properties_json=json.dumps(relation.properties, ensure_ascii=False),
+                confidence=relation.confidence,
+                extractor=relation.extractor,
+            )
 
 
 def _parse_step_id(src_id: str, props: dict[str, str]) -> tuple[int, str]:
@@ -168,6 +223,7 @@ def ingest_graph(*, reset: bool = False) -> dict[str, int]:
 
     s = get_settings()
     llm_triples: list[Triple] = []
+    graph_documents: list[GraphDocument] = []
     work_md: list[tuple[str, str]] = []
     skipped = 0
 
@@ -183,9 +239,15 @@ def ingest_graph(*, reset: bool = False) -> dict[str, int]:
             _delete_source_edges(session, source)
             work_md.append((text, source))
             if s.graph_llm_extract:
-                from .extract_llm import extract_triples_with_llm
+                from .extract_llm import extract_graph_document_with_llm
 
-                llm_triples.extend(extract_triples_with_llm(text, source))
+                graph_documents.append(
+                    extract_graph_document_with_llm(
+                        text,
+                        source,
+                        file_hash=file_hash,
+                    )
+                )
             _touch_source(session, source, file_hash)
 
         people = []
@@ -198,6 +260,7 @@ def ingest_graph(*, reset: bool = False) -> dict[str, int]:
         )
         _write_people(session, people)
         _write_triples(session, triples)
+        _write_graph_documents(session, graph_documents)
         n_person = session.run("MATCH (p:Person) RETURN count(p) AS n").single()["n"]
         n_svc = session.run("MATCH (s:Service) RETURN count(s) AS n").single()["n"]
         n_step = session.run("MATCH (t:Step) RETURN count(t) AS n").single()["n"]

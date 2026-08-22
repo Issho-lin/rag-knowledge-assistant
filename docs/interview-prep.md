@@ -12,7 +12,7 @@
 |----|---------------------------|
 | 场景 | 虚构「星云科技」内部制度 / FAQ / 通讯录 / PDF 手册 / 组织与依赖关系问答 |
 | 语料规模 | 文档侧 **14** 篇（MD/HTML/CSV/PDF）→ **72** 块（policies=63 / tabular=1 / pdf=8）；关系侧 **3** 篇 MD + 通讯录 |
-| 图谱规模 | Person **10** / Service **5** / Step **4**，边 **16**（REPORTS_TO / DEPENDS_ON / NEXT） |
+| 图谱规模 | 当前样例图：Person **10** / Service **5** / Step **4**，边 **16**；抽取模型已支持任意实体/关系/属性 |
 | 知识库 | 四库 policies / tabular / pdf / **relations**；前三库**物理分库**（各自向量 collection + BM25 索引）+ Profile，第四库走 Neo4j |
 | 存储 | 向量 `qdrant\|chroma`；关键词 `opensearch\|pkl`；图 **Neo4j**；CI 默认 Chroma + pkl，不连图 |
 | 入库 | `--ingest` **增量**（`doc_id` + `file_hash`）；`--ingest-graph` **增量**（`SourceDoc.file_hash`）；`--reset` 全量 |
@@ -22,7 +22,7 @@
 | 路由选型 | **9/9**（`run_routing.py`：`--agent` 工具选型，含 3 道关系题选中 `query_relations`） |
 | 图 vs 文档对照 | 3 道关系题：文档检索命中 0 / 0 / 1，图检索 **3/3** 命中（`run_graph_compare.py`） |
 | ReAct 端到端 | **6/7**（`run_react.py`，7 题子集） |
-| 单测 | **61** passed（默认 Chroma + pkl，含增量入库与图抽取；图单测不连 Neo4j） |
+| 单测 | **63** passed（默认 Chroma + pkl，含增量入库与图抽取；图单测不连 Neo4j） |
 | 检索方案对照 | 纯向量 / 混合 / 混合+重排，在本题集上分数相同 |
 | **默认演示 / 产品路径** | **`--react` ReAct**（CLI 与 Gradio 一致） |
 | 辅助路径 | `--query` 全库直连 RAG（eval 底座）；`--agent` 路由单库（理解对照） |
@@ -32,7 +32,7 @@
 
 ## 已实现 vs 未实现
 
-**已做完的**：入库（含 PDF）、**物理分库 + Profile**、**可切换存储**（Qdrant/Chroma、OpenSearch/pkl）、**增量入库**、混合检索、重排、带来源的回答、规则+模型两层拒答、多轮改写、**Agent 工具路由（`--agent`）**、**ReAct 多工具（`--react`，CLI 与 Gradio 主路径）**、**Graph RAG（Neo4j + `query_relations`，规则 ETL + 实体对齐 + 参数化 Cypher）**、可观测、可重复评测。
+**已做完的**：入库（含 PDF）、**物理分库 + Profile**、**可切换存储**（Qdrant/Chroma、OpenSearch/pkl）、**增量入库**、混合检索、重排、带来源的回答、规则+模型两层拒答、多轮改写、**Agent 工具路由（`--agent`）**、**ReAct 多工具（`--react`，CLI 与 Gradio 主路径）**、**Graph RAG（Neo4j + `query_relations`，规则/LLM 双通道通用抽取 + 实体对齐 + 通用 GraphPlan + 参数化 Cypher）**、可观测、可重复评测。
 
 **还没做的**（被问到如实说）：多模态检索、CRAG / Self-RAG 纠错、扩大 ReAct golden、Ragas 自动化打分、异步入库队列、图谱的时效性（关系没有生效/失效时间）。
 
@@ -483,7 +483,7 @@ uv run python tests/eval/run_graph_compare.py
 | 2026-08-02 | **第 9 周收尾**：`run_react.py` 6/7、Gradio ReAct、learning-log 归档 |
 | 2026-08-16 | **第 10 周收尾**：Qdrant/OpenSearch 可切换、物理分库、增量 ingest；口述同步（Gradio 已是 ReAct） |
 | 2026-08-16 | **第 10 周验收**：Qdrant+OS ingest 72 chunk；golden 33/34、recall 31/31、routing 6/6；eval 空库改按 KB 汇总 |
-| 2026-08-20 | **第 11 周 Graph RAG**：新增场景 H（关系检索）；四库口径、routing 9/9、单测 61；「还没做的」移除 Graph RAG |
+| 2026-08-20 | **第 11 周 Graph RAG**：新增场景 H（关系检索）；四库口径、routing 9/9、通用 GraphDocument 抽取、单测 63；「还没做的」移除 Graph RAG |
 
 ### 新功能迭代时更新清单
 

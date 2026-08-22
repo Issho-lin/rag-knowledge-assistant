@@ -62,18 +62,18 @@ uv run python tests/eval/run_routing.py
 uv run python tests/eval/run_graph_compare.py
 ```
 
-## 生产形态（本周实现）
+## 生产形态（当前实现）
 
 ```text
 语料 MD/CSV
-  ├─ 规则 ETL：按「列角色同义词」认表（姓名/工号/上级/依赖/环节…），不是某一篇的列名
-  ├─ 人员主数据：通讯录对齐工号/姓名
-  ├─ LLM 补抽：只允许本体关系类型；审批顺序仍由有序列表规则抽
+  ├─ 规则 ETL：表格/有序列表优先，保留确定性结构
+  ├─ LLMGraphTransformer 风格抽取：自动识别实体、类型、属性、关系、关系属性和证据
+  ├─ 统一 GraphDocument：规则结果与 LLM 结果合并，实体/关系保留来源与置信度
   └─ 按 SourceDoc.file_hash 增量；变更先删该 source 的边再 MERGE
         ▼
      Neo4j
         ▼
-问句 → 便宜模型生成 GraphPlan（pattern/entity/hops）
+问句 → 便宜模型生成通用 GraphPlan（intent/entities/relations/hops）
         → 实体链接（姓名/工号）
         → 仅跑参数化 Cypher 模板（禁止把 LLM 生成的 Cypher 直接执行）
 ```
@@ -84,8 +84,8 @@ LLM 规划失败时用本体词典降级（「上级/依赖/审批链」），**
 
 | 项 | 结果 |
 |----|------|
-| `--ingest-graph` | Person=10 Service=5 Step=4 边=16 |
-| 单测 | **61** passed（`--ignore=tests/eval`；图单测不连 Neo4j） |
+| `--ingest-graph` | Person=10 Service=5 Step=4，基础业务边 16；通用 GraphDocument 运行时总边 28 |
+| 单测 | **63** passed（`--ignore=tests/eval`；图单测不连 Neo4j） |
 | routing | **9/9**（含 3 道关系题 → `query_relations`） |
 | golden | 33/34（3 道关系题标 `skip_direct_eval` 不计） |
 | ReAct 手测 3 题 | 均选 `query_relations` 且答对 |

@@ -9,6 +9,8 @@ from rag_assistant.graph.identity import IdentityIndex
 from rag_assistant.graph.plan import infer_plan_from_lexicon, parse_plan_payload
 from rag_assistant.graph.query import classify_intent, match_entity
 from rag_assistant.graph.schema import REL_REPORTS_TO
+from rag_assistant.graph.models import GraphDocument
+from rag_assistant.graph.extract_llm import extract_graph_document_with_llm
 
 
 def test_extract_reports_and_skip_dash():
@@ -92,3 +94,48 @@ def test_parse_plan_payload():
     )
     assert plan.entity == "订单服务"
     assert plan.hops == 2
+
+
+def test_generic_graph_document_accepts_new_domain():
+    document = GraphDocument.model_validate(
+        {
+            "source": "book.md",
+            "entities": [
+                {"id": "刘慈欣", "type": "Person"},
+                {"id": "三体", "type": "Book"},
+            ],
+            "relations": [
+                {
+                    "source_id": "刘慈欣",
+                    "source_type": "Person",
+                    "relation": "AUTHOR_OF",
+                    "target_id": "三体",
+                    "target_type": "Book",
+                    "evidence": "刘慈欣创作了《三体》",
+                }
+            ],
+        }
+    )
+    assert document.entities[1].type == "Book"
+    assert document.relations[0].relation == "AUTHOR_OF"
+
+
+def test_llm_graph_extractor_parses_open_domain(monkeypatch):
+    monkeypatch.setattr(
+        "rag_assistant.graph.extract_llm.LLMClient.invoke",
+        lambda *_args, **_kwargs: (
+            '{"entities":[{"id":"刘慈欣","type":"Person"},'
+            '{"id":"三体","type":"Book"}],'
+            '"relations":[{"source_id":"刘慈欣","source_type":"Person",'
+            '"relation":"AUTHOR_OF","target_id":"三体","target_type":"Book",'
+            '"evidence":"刘慈欣创作了《三体》"}]}'
+        ),
+    )
+    document = extract_graph_document_with_llm(
+        "刘慈欣创作了《三体》。",
+        "book.md",
+        file_hash="h1",
+    )
+    assert [e.type for e in document.entities] == ["Person", "Book"]
+    assert document.relations[0].relation == "AUTHOR_OF"
+    assert document.relations[0].source == "book.md"

@@ -101,13 +101,14 @@ flowchart TB
 | 模块 | 职责 |
 |------|------|
 | `ingest/` | 语料发现、按 Profile 切块、按 KB 物理分库写向量 + BM25 |
-| `graph/schema.py` | 图本体：允许的关系类型、列角色同义词、问法词典 |
-| `graph/extract.py` | 规则 ETL：按列角色认表头，抽 `PersonFact` 与三元组 |
+| `graph/models.py` | 通用 `GraphEntity` / `GraphRelation` / `GraphDocument` 抽取模型 |
+| `graph/schema.py` | 结构化表格规则和可选领域约束，不限制 LLM 自动发现的新实体关系 |
+| `graph/extract.py` | 规则 ETL：表格/有序列表优先，保留确定性结构 |
+| `graph/extract_llm.py` | LLMGraphTransformer 风格自动抽取任意实体、关系、属性和证据 |
 | `graph/identity.py` | 实体对齐：以通讯录为主数据，统一姓名/工号 |
-| `graph/extract_llm.py` | LLM 补抽散文中的关系（仅限本体内类型） |
 | `graph/ingest.py` | 按 `SourceDoc.file_hash` 增量写 Neo4j |
-| `graph/plan.py` | 问句 → `GraphPlan`（LLM 规划，失败降级词典） |
-| `graph/query.py` | `GraphPlan` → 参数化 Cypher → chunk |
+| `graph/plan.py` | 问句 → 通用 `GraphPlan`（LLM 规划，失败降级词典） |
+| `graph/query.py` | `GraphPlan` → 安全参数化 Cypher → chunk |
 | `kb/registry.py` | 四个 KB（policies / tabular / pdf / relations）与 tool 名、后端类型 |
 | `kb/profiles.py` | 每库切块 + 检索增强开关（decompose、expand_parent） |
 | `kb/search.py` | `run_kb_retrieve`、LangChain 工具、`format_chunks_observation` |
@@ -145,7 +146,7 @@ rag-react-query
 | `tests/eval/run.py`（检索 + produce_answer） | golden **33/34**，recall@4 **31/31**（37 题中 3 道图题标 `skip_direct_eval`） |
 | `tests/eval/run_routing.py`（`--agent` 选型） | routing **9/9**（含 3 道关系题 → `query_relations`） |
 | `tests/eval/run_graph_compare.py`（文档检索 vs 图检索） | 3 道关系题：文档 0/0/1 命中，图 3/3 命中 |
-| 单测 | **61** passed（`--ignore=tests/eval`） |
+| 单测 | **63** passed（`--ignore=tests/eval`） |
 
 三路检索对照（vector / hybrid / hybrid+rerank）：`tests/eval/compare.py`。
 
