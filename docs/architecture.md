@@ -148,7 +148,7 @@ rag-react-query
 | `tests/eval/run.py`（检索 + produce_answer） | golden **33/34**，recall@4 **31/31**（37 题中 3 道图题标 `skip_direct_eval`） |
 | `tests/eval/run_routing.py`（`--agent` 选型） | routing **9/9**（含 3 道关系题 → `query_relations`） |
 | `tests/eval/run_graph_compare.py`（文档检索 vs 图检索） | 3 道关系题：文档 0/0/1 命中，图 3/3 命中 |
-| 单测 | **72** passed（`--ignore=tests/eval`） |
+| 单测 | **77** passed（`--ignore=tests/eval`） |
 
 三路检索对照（vector / hybrid / hybrid+rerank）：`tests/eval/compare.py`。
 
