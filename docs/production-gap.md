@@ -263,8 +263,8 @@ data/chroma/policies/bm25.pkl
 | 序号 | 项 | 说明 | 计划周次 |
 |------|-----|------|----------|
 | P2-1 | **关系 / Graph KB** | Neo4j + `query_relations`；语料抽取建图、实体对齐、参数化 Cypher | **第 11 周已做** |
-| P2-2 | **多模态 KB** | 截图/幻灯；`search_visual` | 第 12 周 |
-| P2-3 | **CRAG / Self-RAG** | 挂在 Profile 上的纠错层，非另起系统 | 第 12 周 |
+| P2-2 | **多模态 KB** | 图像事实源 + VLM 自动 caption → `search_visual`；CLIP 双塔后置 | 第 12 周（进行中） |
+| P2-3 | **CRAG / Self-RAG** | 挂在 Profile 上的纠错层，非另起系统 | 第 12 周（进行中：一次 rewrite） |
 | P2-4 | **HyDE / 查询扩展** | 某 Profile 内开关，before/after | 第 10–12 周可选 |
 | P2-5 | **物理分库** | 每 KB 独立向量 collection + 独立 BM25/OS 索引 | **第 10 周已做** |
 | P2-6 | **替换向量库后端** | Chroma → **Qdrant**（`VECTOR_BACKEND` 可切回 chroma） | **第 10 周已做** |
@@ -298,7 +298,7 @@ data/chroma/policies/bm25.pkl
        第 11 Graph RAG（Neo4j，见 week11-graph-rag.md）✅
          │
          ▼
-       第 12 多模态 + CRAG + 总复盘  ← 下一步
+       第 12 多模态 + CRAG + 总复盘  ← 进行中（week12/multimodal-crag）
 ```
 
 ---

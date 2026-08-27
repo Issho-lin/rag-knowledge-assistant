@@ -112,7 +112,7 @@ LLM 规划失败时显式失败；未知关系类型按当前图库白名单拒�
 |----|------|
 | 第 10 周 | 生产存储（Qdrant + OpenSearch）已验收 |
 | **第 11 周** | **本文档（Graph RAG）已验收** |
-| 第 12 周 | 多模态 + CRAG + 12 周总复盘 ← 下一步 |
+| 第 12 周 | 多模态 + CRAG + 总复盘 → [`week12-multimodal-crag.md`](./week12-multimodal-crag.md) |
 
 ---
 

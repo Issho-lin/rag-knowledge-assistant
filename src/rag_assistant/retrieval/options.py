@@ -21,6 +21,9 @@ class RetrievalOptions:
     # 命中子块时扩展为父节全文
     expand_parent: bool = False
 
+    # CRAG：检索后评估，incorrect 则改写再检索一次（挂在 Profile 上）
+    crag_enabled: bool = False
+
     @classmethod
     def from_settings(cls) -> "RetrievalOptions":
         from ..core.config import get_settings
@@ -29,6 +32,7 @@ class RetrievalOptions:
         return cls(
             decompose=s.query_decompose_enabled,
             expand_parent=s.parent_expand_enabled,
+            crag_enabled=s.crag_enabled,
         )
 
     def with_overrides(self, **kwargs: object) -> "RetrievalOptions":
@@ -36,6 +40,7 @@ class RetrievalOptions:
             "metadata_filter": dict(self.metadata_filter),
             "decompose": self.decompose,
             "expand_parent": self.expand_parent,
+            "crag_enabled": self.crag_enabled,
         }
         data.update(kwargs)
         return RetrievalOptions(**data)

@@ -6,7 +6,8 @@
 
 | 优先级 | 文档 | 什么时候看 |
 |--------|------|------------|
-| **1** | [`docs/week11-graph-rag.md`](docs/week11-graph-rag.md) | 第 11 周已验收：Graph RAG（Neo4j）；下一步是第 12 周多模态 + CRAG |
+| **1** | [`docs/week12-multimodal-crag.md`](docs/week12-multimodal-crag.md) | 第 12 周进行中：多模态 + CRAG |
+| **1b** | [`docs/week11-graph-rag.md`](docs/week11-graph-rag.md) | 第 11 周已验收：Graph RAG（Neo4j） |
 | **1b** | [`docs/production-upgrade.md`](docs/production-upgrade.md) | 第 10 周已验收：Qdrant + OpenSearch |
 | **2** | [`docs/production-gap.md`](docs/production-gap.md) §1 | demo vs 生产对照 |
 | **3** | 本文 README | 跑起来、命令、目录结构 |
@@ -25,16 +26,16 @@
 
 员工用自然语言问内部问题；系统从多库语料 **混合检索 + 重排** 后作答，带引用；低置信度 **拒答**；支持 **多轮改写**、**Agent 工具路由** 与 **ReAct**。
 
-## 当前能力（第 11 周 Graph RAG 已验收）
+## 当前能力（第 12 周进行中）
 
 | 能力 | 说明 |
 |------|------|
-| 语料 | 文档库 + `kb_graph/`（汇报线 / 依赖 / 审批链）；人员与通讯录对齐 |
-| 多库 | policies / tabular / pdf（向量）+ **relations（Neo4j）** |
-| 入库 | `--ingest` 文档增量；`--ingest-graph` 抽关系写 Neo4j（同样增量） |
-| 检索 | 文档题 hybrid + rerank；关系题 `GraphPlan` → 参数化 Cypher（含多跳） |
-| 问答路径 | `--query` 直连（够不到图库） · `--agent` 路由 · **`--react` 主路径** |
-| 评测 | golden 33/34 · recall 31/31 · routing 9/9 · 单测 72 |
+| 语料 | 文档库 + `kb_graph/` + **`kb_multimodal/images`（VLM caption）** |
+| 多库 | policies / tabular / pdf / **multimodal**（向量）+ relations（Neo4j） |
+| 入库 | `--ingest` 文档增量；`--ingest-graph` 抽关系写 Neo4j |
+| 检索 | hybrid + rerank；关系题 GraphPlan；**policies 可走 CRAG** |
+| 问答路径 | `--query` · `--agent` · **`--react` 主路径** |
+| 评测 | golden / routing 随第 12 周扩题；单测以 `pytest` 为准 |
 
 ## 布局
 

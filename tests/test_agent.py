@@ -17,6 +17,7 @@ def test_get_kb_by_tool_name():
     assert get_kb_by_tool_name("search_tabular").id == "tabular"
     assert get_kb_by_tool_name("search_pdf_handbook").id == "pdf"
     assert get_kb_by_tool_name("query_relations").id == "relations"
+    assert get_kb_by_tool_name("search_visual").id == "multimodal"
 
 
 def test_resolve_tool_to_kb_id():
@@ -30,6 +31,7 @@ def test_build_kb_tools_names():
         "search_tabular",
         "search_pdf_handbook",
         "query_relations",
+        "search_visual",
     }
 
 

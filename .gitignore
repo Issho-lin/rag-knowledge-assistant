@@ -11,6 +11,9 @@ data/index/
 # eval 跑分结果（golden.json 保留进库）
 data/eval/results/
 
+# Vision caption 缓存（按 file_hash 重建）
+data/cache/
+
 # large third-party clones (optional); 内部练习语料 data/corpus/internal/ 纳入版本库
 data/corpus/markdown/
 

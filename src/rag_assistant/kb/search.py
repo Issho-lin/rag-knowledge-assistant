@@ -65,8 +65,12 @@ def format_chunks_observation(
         text = str(chunk.get("text", "")).strip()
         if len(text) > _PREVIEW_LEN:
             text = text[:_PREVIEW_LEN] + "…"
+        media = str(chunk.get("media_path") or "").strip()
         # [1][2] 编号与 Agent 终答中的引用标注对齐
-        lines.append(f"[{i}] {source} (score={score:.3f})")
+        if media and (chunk.get("kind") == "image" or media != source):
+            lines.append(f"[{i}] {source} (score={score:.3f}, media={media})")
+        else:
+            lines.append(f"[{i}] {source} (score={score:.3f})")
         lines.append(text)
         lines.append("")
     return "\n".join(lines).strip()

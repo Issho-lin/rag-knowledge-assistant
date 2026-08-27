@@ -6,7 +6,14 @@ from dataclasses import dataclass
 from typing import Literal
 
 from ..ingest.loaders import Document
-from .profiles import COMMON_PROFILE, KBProfile, PDF_PROFILE, POLICIES_PROFILE, TABULAR_PROFILE
+from .profiles import (
+    COMMON_PROFILE,
+    KBProfile,
+    MULTIMODAL_PROFILE,
+    PDF_PROFILE,
+    POLICIES_PROFILE,
+    TABULAR_PROFILE,
+)
 
 # vector=Qdrant/Chroma+BM25；graph=Neo4j，不写向量库
 KBBackend = Literal["vector", "graph"]
@@ -41,6 +48,8 @@ def resolve_kb_id(doc: Document) -> str:
     # 根据语料类型和路径归入 KB
     if corpus == "kb_graph":
         return "relations"
+    if corpus == "kb_multimodal":
+        return "multimodal"
     if kind == "csv" or source.endswith(".csv"):
         return "tabular"
     if kind == "pdf" or source.endswith(".pdf"):
@@ -96,6 +105,19 @@ _REGISTRY: dict[str, KnowledgeBase] = {
         ),
         corpus_names=("kb_graph",),
         backend="graph",
+    ),
+    "multimodal": KnowledgeBase(
+        id="multimodal",
+        name="图文与幻灯图像",
+        profile=MULTIMODAL_PROFILE,
+        tool_name="search_visual",
+        description=(
+            "架构图、发布看板截图、入职幻灯等图像知识库（入库经 Vision 模型自动读图）。"
+            "问「架构图里画了什么」「看板上窗口是哪天」「幻灯第几页三件事」时用本工具。"
+            "不适用：制度条文全文、通讯录字段、纯关系多跳（分别用 search_policies / "
+            "search_tabular / query_relations）。"
+        ),
+        corpus_names=("kb_multimodal",),
     ),
 }
 

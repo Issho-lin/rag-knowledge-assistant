@@ -30,7 +30,7 @@ def _chunk_id(source: str, text: str, index: int) -> str:
 
 
 def discover_corpus_roots(parent: Path | None = None) -> list[Path]:
-    """发现父目录下所有合法语料包（子目录内存在 markdown/ 或 html/ 或 csv/）。"""
+    """发现父目录下所有合法语料包（子目录内存在 markdown/html/csv/pdf/images）。"""
     parent = parent or get_settings().corpus_dir
     if not parent.is_dir():
         return []
@@ -39,7 +39,10 @@ def discover_corpus_roots(parent: Path | None = None) -> list[Path]:
     for child in sorted(parent.iterdir()):
         if not child.is_dir() or child.name.startswith("."):
             continue
-        if any((child / sub).is_dir() for sub in ("markdown", "html", "csv", "pdf")):
+        if any(
+            (child / sub).is_dir()
+            for sub in ("markdown", "html", "csv", "pdf", "images")
+        ):
             roots.append(child)
     return roots
 
@@ -146,6 +149,7 @@ def _chunk_live_doc(live: _LiveDoc) -> dict[str, list]:
                 chunk_index=info.chunk_index,
                 doc_id=live.doc_id,
                 file_hash=live.file_hash,
+                media_path=str(d.metadata.get("media_path") or ""),
             )
         )
     return batch
@@ -227,7 +231,7 @@ def ingest(*, reset: bool = False, only: str | None = None) -> int:
 
     if not docs and only is None:
         log.error("ingest.empty", parent=str(get_settings().corpus_dir))
-        print("未找到任何语料。请在 data/corpus/<名称>/{markdown,html,csv,pdf}/ 下放置文件。")
+        print("未找到任何语料。请在 data/corpus/<名称>/{markdown,html,csv,pdf,images}/ 下放置文件。")
         return 0
 
     live_by_kb: dict[str, dict[str, _LiveDoc]] = defaultdict(dict)

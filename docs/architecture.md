@@ -35,10 +35,12 @@ src/rag_assistant/
 ```mermaid
 flowchart TB
     subgraph ingest["入库（离线，两条链路）"]
-        A1[语料 MD/HTML/CSV/PDF] --> A2[ingest: loaders + Profile 分块]
+        A1[语料 MD/HTML/CSV/PDF/PNG] --> A2[ingest: loaders + Profile 分块]
         A2 --> A3[Embedding 分批≤20]
         A3 --> A4[("向量库 每 KB 一个<br/>Qdrant collection / Chroma 目录")]
         A2 --> A5[("BM25 每 KB 一个<br/>OpenSearch index / pkl")]
+        IMG[kb_multimodal images] --> VLM[Vision caption 缓存]
+        VLM --> A2
         G1[kb_graph MD] --> G2[ingest-graph: 通用 LLM GraphDocument 抽取]
         G2 --> G3[(Neo4j)]
     end
@@ -85,7 +87,7 @@ flowchart TB
 
 **工具统一约定**（`kb/search.py`）：`build_kb_tools()` 只检索，返回格式化片段；不在工具内调用 `produce_answer`。`run_kb_retrieve` 按 `kb.backend` 分流——`vector` 走 `retrieve_chunks`，`graph` 走 `graph.query.query_relations`。
 
-## 四个知识库工具
+## 五个知识库工具
 
 | tool | KB | 后端 | 覆盖的问法 |
 |------|----|------|-----------|
@@ -93,23 +95,26 @@ flowchart TB
 | `search_tabular` | tabular | 向量 + BM25 | 工号、分机、邮箱等字段精确匹配 |
 | `search_pdf_handbook` | pdf | 向量 + BM25 | PDF 手册、园区后勤 |
 | `query_relations` | relations | **Neo4j** | 汇报线、隔级上级、服务依赖链、审批链 |
+| `search_visual` | multimodal | 向量 + BM25 | 架构图/截图/幻灯（VLM caption 入库） |
 
-前三个由 `--ingest` 建索引，第四个由 `--ingest-graph` 建图；`list_vector_kbs()` 保证 `relations` 不会被写进向量库或参与跨库召回。
+向量库由 `--ingest` 建索引（含图像 caption）；图库由 `--ingest-graph` 建图；`list_vector_kbs()` 保证 `relations` 不会被写进向量库或参与跨库召回。
 
 ## 模块职责
 
 | 模块 | 职责 |
 |------|------|
-| `ingest/` | 语料发现、按 Profile 切块、按 KB 物理分库写向量 + BM25 |
+| `ingest/` | 语料发现、图像 VLM caption、按 Profile 切块、按 KB 物理分库写向量 + BM25 |
+| `ingest/vision_caption.py` | 图像 → Vision 模型结构化 caption；`file_hash` 缓存；失败显式报错 |
 | `graph/models.py` | 通用 `GraphEntity` / `GraphRelation` / `GraphDocument` 抽取模型 |
 | `graph/extract_llm.py` | LLMGraphTransformer 风格自动抽取任意实体、关系、属性、别名和证据 |
 | `graph/ingest.py` | 动态 Label/关系规范化、开放域实体 ID 对齐、按来源原子增量写 Neo4j |
 | `graph/plan.py` | 问句 → 严格 `GraphPlan`；规划失败显式失败，不按旧领域词典猜测 |
 | `graph/query.py` | `GraphPlan` → 安全参数化 Cypher → chunk |
-| `kb/registry.py` | 四个 KB（policies / tabular / pdf / relations）与 tool 名、后端类型 |
-| `kb/profiles.py` | 每库切块 + 检索增强开关（decompose、expand_parent） |
-| `kb/search.py` | `run_kb_retrieve`、LangChain 工具、`format_chunks_observation` |
-| `retrieval/engine.py` | 子查询分解、召回、rerank、过滤、父文档扩展 |
+| `kb/registry.py` | 五库 policies / tabular / pdf / relations / multimodal 与 tool、后端 |
+| `kb/profiles.py` | 每库切块 + 检索增强（decompose、expand_parent、crag_enabled） |
+| `kb/search.py` | `run_kb_retrieve`、LangChain 工具、`format_chunks_observation`（含 media_path） |
+| `retrieval/engine.py` | 子查询分解、召回、rerank、过滤、CRAG、父文档扩展 |
+| `retrieval/crag.py` | 检索后 grade；incorrect 则改写再检索一次 |
 | `query/preprocess/rewrite.py` | 多轮指代补全（有历史才改写） |
 | `query/preprocess/decompose.py` | 可选子查询分解（单库内，默认关） |
 | `answer/refusal.py` | 拒答文案 + `pre_llm_refusal` / `is_refusal` |

@@ -12,16 +12,18 @@ def test_resolve_kb_by_kind():
     csv = Document(text="x", source="/a/员工.csv", metadata={"kind": "csv", "corpus": "internal"})
     pdf = Document(text="x", source="/a/handbook.pdf", metadata={"kind": "pdf", "corpus": "kb_pdf"})
     graph = Document(text="x", source="/a/org.md", metadata={"kind": "markdown", "corpus": "kb_graph"})
+    mm = Document(text="x", source="/a/arch.md", metadata={"kind": "markdown", "corpus": "kb_multimodal"})
     assert resolve_kb_id(md) == "policies"
     assert resolve_kb_id(csv) == "tabular"
     assert resolve_kb_id(pdf) == "pdf"
     assert resolve_kb_id(graph) == "relations"
+    assert resolve_kb_id(mm) == "multimodal"
 
 
-def test_registry_has_three_kbs():
+def test_registry_has_expected_kbs():
     ids = {kb.id for kb in list_kbs()}
-    assert ids == {"policies", "tabular", "pdf", "relations"}
-    assert {kb.id for kb in list_vector_kbs()} == {"policies", "tabular", "pdf"}
+    assert ids == {"policies", "tabular", "pdf", "relations", "multimodal"}
+    assert {kb.id for kb in list_vector_kbs()} == {"policies", "tabular", "pdf", "multimodal"}
 
 
 def test_merge_options_physical_kb_no_metadata_filter():
@@ -33,7 +35,9 @@ def test_merge_options_physical_kb_no_metadata_filter():
 
 def test_policies_profile_expands_parent():
     assert get_kb("policies").profile.retrieval.expand_parent is True
+    assert get_kb("policies").profile.retrieval.crag_enabled is True
 
 
 def test_get_kb_by_tool_name():
     assert get_kb_by_tool_name("search_pdf_handbook").id == "pdf"
+    assert get_kb_by_tool_name("search_visual").id == "multimodal"

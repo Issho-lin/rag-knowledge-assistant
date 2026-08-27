@@ -27,6 +27,7 @@ def merge_retrieval_options(
     return RetrievalOptions(
         decompose=kb_opts.decompose,
         expand_parent=kb_opts.expand_parent,
+        crag_enabled=kb_opts.crag_enabled,
         metadata_filter=meta,
     )
 
@@ -88,6 +89,7 @@ def retrieve_chunks(
         filter=do_rerank,
         decompose=opts.decompose,
         parent_expand=opts.expand_parent,
+        crag=opts.crag_enabled,
         top_score=chunks[0]["score"] if chunks else None,
     )
     return chunks

@@ -34,17 +34,24 @@ class KBProfile:
 # 通用默认：与当前 hybrid+rerank 主线一致；增强开关默认关
 COMMON_PROFILE = KBProfile()
 
-# 制度 / FAQ / HTML：标题切块1200字 + 可选父文档（长节）
-POLICIES_PROFILE = COMMON_PROFILE.with_retrieval(expand_parent=True)
+# 制度 / FAQ / HTML：标题切块1200字 + 可选父文档（长节）+ CRAG 纠错
+POLICIES_PROFILE = COMMON_PROFILE.with_retrieval(expand_parent=True, crag_enabled=True)
 
 # 表格行数据（CSV 等）：短块、无父文档、不拆复合问；按行检索
 TABULAR_PROFILE = KBProfile(
-    retrieval=RetrievalOptions(decompose=False, expand_parent=False),
+    retrieval=RetrievalOptions(decompose=False, expand_parent=False, crag_enabled=False),
 )
 
 # PDF 手册：固定窗口切块800字、不拆复合问、不扩父文档（第 8 周 PDF KB）
 PDF_PROFILE = KBProfile(
     chunk_strategy="fixed_window",
     max_chars=800,
-    retrieval=RetrievalOptions(decompose=False, expand_parent=False),
+    retrieval=RetrievalOptions(decompose=False, expand_parent=False, crag_enabled=False),
+)
+
+# 多模态图像：标题切块；事实源是 PNG，检索面是 VLM caption
+MULTIMODAL_PROFILE = KBProfile(
+    chunk_strategy="heading",
+    max_chars=1200,
+    retrieval=RetrievalOptions(decompose=False, expand_parent=True, crag_enabled=False),
 )

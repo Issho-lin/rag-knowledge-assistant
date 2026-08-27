@@ -126,6 +126,31 @@ def retrieve_with_options(
 
     chunks = candidates[:k]
 
+    if opts.crag_enabled:
+        from ..core.config import get_settings
+        from .crag import maybe_apply_crag
+
+        # Profile 声明能力；CRAG_ENABLED=false 为全局 kill switch
+        if get_settings().crag_enabled:
+
+            def _again(new_q: str) -> list[dict[str, Any]]:
+                again_opts = opts.with_overrides(crag_enabled=False)
+                return retrieve_with_options(
+                    new_q,
+                    k,
+                    mode,
+                    do_rerank=do_rerank,
+                    options=again_opts,
+                    kb_id=kb_id,
+                )
+
+            chunks = maybe_apply_crag(
+                q,
+                chunks,
+                retrieve_again=_again,
+                enabled=True,
+            )
+
     if opts.expand_parent:
         chunks = expand_parent_context(chunks)
 

@@ -304,5 +304,35 @@
     "expect_refuse": false,
     "skip_direct_eval": true,
     "notes": "第 11 周；审批链"
+  },
+  {
+    "id": "mm-arch-order-downstream",
+    "question": "架构图里订单服务连到哪些下游？",
+    "must_contain": ["支付服务", "通知服务"],
+    "expected_sources": ["01-core-services-arch.png"],
+    "expect_refuse": false,
+    "kb": "multimodal",
+    "expected_tool": "search_visual",
+    "notes": "第 12 周；VLM caption 后检索图像"
+  },
+  {
+    "id": "mm-release-board-windows",
+    "question": "发布看板截图上常规窗口是哪几天？",
+    "must_contain": ["周二", "周四"],
+    "expected_sources": ["02-release-board.png"],
+    "expect_refuse": false,
+    "kb": "multimodal",
+    "expected_tool": "search_visual",
+    "notes": "第 12 周；看板图像"
+  },
+  {
+    "id": "mm-onboarding-slide3",
+    "question": "入职幻灯第 3 页三件事是什么？",
+    "must_contain": ["工牌", "账号", "制度"],
+    "expected_sources": ["03-onboarding-slide.png"],
+    "expect_refuse": false,
+    "kb": "multimodal",
+    "expected_tool": "search_visual",
+    "notes": "第 12 周；幻灯图像"
   }
 ]

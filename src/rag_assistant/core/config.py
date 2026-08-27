@@ -35,6 +35,15 @@ class Settings(BaseSettings):
 
     query_decompose_enabled: bool = Field(False, alias="QUERY_DECOMPOSE_ENABLED")
     parent_expand_enabled: bool = Field(False, alias="PARENT_EXPAND_ENABLED")
+    # 全局默认；各 KB Profile 可覆盖（见 RetrievalOptions.crag_enabled）
+    crag_enabled: bool = Field(False, alias="CRAG_ENABLED")
+
+    # 多模态：Vision 读图 caption（图像为事实源）
+    vision_model: str = Field("qwen-vl-max", alias="VISION_MODEL")
+    vision_caption_cache_dir: Path = Field(
+        Path("./data/cache/vision_captions"),
+        alias="VISION_CAPTION_CACHE_DIR",
+    )
 
     corpus_dir: Path = Field(Path("./data/corpus"), alias="CORPUS_DIR")
     chroma_path: Path = Field(Path("./data/chroma/unified"), alias="CHROMA_PATH")

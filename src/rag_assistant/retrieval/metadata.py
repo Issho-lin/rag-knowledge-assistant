@@ -37,6 +37,7 @@ def build_chunk_metadata(
     chunk_index: int,
     doc_id: str = "",
     file_hash: str = "",
+    media_path: str = "",
 ) -> dict[str, str | int]:
     """入库时写入向量库 / BM25 的元数据。"""
     meta: dict[str, str | int] = {
@@ -55,13 +56,15 @@ def build_chunk_metadata(
         meta["doc_id"] = doc_id
     if file_hash:
         meta["file_hash"] = file_hash
+    if media_path:
+        meta["media_path"] = media_path
     return meta
 
 
 def chunk_from_hit(meta: dict[str, Any], *, text: str, doc_id: str, score: float) -> dict[str, Any]:
     """把向量库 / BM25 命中整理成 pipeline 统一 chunk 结构。"""
     source = str(meta.get("source", "?"))
-    return {
+    out = {
         "id": doc_id,
         "text": text,
         "source": source,
@@ -73,3 +76,9 @@ def chunk_from_hit(meta: dict[str, Any], *, text: str, doc_id: str, score: float
         "parent_text": meta.get("parent_text", ""),
         "chunk_index": meta.get("chunk_index", -1),
     }
+    media_path = str(meta.get("media_path") or "").strip()
+    if media_path:
+        out["media_path"] = media_path
+    elif str(meta.get("kind", "")) == "image":
+        out["media_path"] = source
+    return out

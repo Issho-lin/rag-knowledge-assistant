@@ -1,6 +1,13 @@
 """知识库分库与 Profile 注册。"""
 
-from .profiles import COMMON_PROFILE, KBProfile, PDF_PROFILE, POLICIES_PROFILE, TABULAR_PROFILE
+from .profiles import (
+    COMMON_PROFILE,
+    KBProfile,
+    MULTIMODAL_PROFILE,
+    PDF_PROFILE,
+    POLICIES_PROFILE,
+    TABULAR_PROFILE,
+)
 from .registry import (
     KnowledgeBase,
     get_kb,
@@ -16,6 +23,7 @@ __all__ = [
     "COMMON_PROFILE",
     "TABULAR_PROFILE",
     "KBProfile",
+    "MULTIMODAL_PROFILE",
     "PDF_PROFILE",
     "POLICIES_PROFILE",
     "KnowledgeBase",

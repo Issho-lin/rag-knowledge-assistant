@@ -1,7 +1,7 @@
 """文档加载器：多类型文件 → 内部 Document。
 
 每种格式负责把正文抽干净，并保留 source 路径供回答引用。
-当前支持：Markdown、HTML、CSV。
+当前支持：Markdown、HTML、CSV、PDF、图像（VLM caption）。
 """
 
 from __future__ import annotations
@@ -109,8 +109,25 @@ def load_pdf(path: Path) -> Document:
     )
 
 
+def load_image(path: Path) -> Document:
+    """图像为事实源：VLM 自动 caption 后入库；source 指向图像路径。"""
+    from .vision_caption import caption_image
+
+    caption = caption_image(path)
+    return Document(
+        text=caption,
+        source=str(path),
+        metadata={
+            "kind": "image",
+            "name": path.stem,
+            "media_path": str(path),
+            "media_type": path.suffix.lower().lstrip(".") or "image",
+        },
+    )
+
+
 def load_corpus(root: Path) -> list[Document]:
-    """加载语料根目录下 markdown/、html/、csv/、pdf/ 中的全部文件。"""
+    """加载语料根目录下 markdown/、html/、csv/、pdf/、images/ 中的全部文件。"""
     root = Path(root)
     if not root.is_dir():
         raise FileNotFoundError(f"语料目录不存在: {root}")
@@ -135,6 +152,14 @@ def load_corpus(root: Path) -> list[Document]:
     if pdf_dir.is_dir():
         for path in sorted(pdf_dir.rglob("*.pdf")):
             docs.append(load_pdf(path))
+
+    images_dir = root / "images"
+    if images_dir.is_dir():
+        from .vision_caption import is_image_path
+
+        for path in sorted(images_dir.rglob("*")):
+            if path.is_file() and is_image_path(path):
+                docs.append(load_image(path))
 
     log.info("ingest.load_corpus", root=str(root), count=len(docs))
     return docs
