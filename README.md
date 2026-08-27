@@ -6,7 +6,7 @@
 
 | 优先级 | 文档 | 什么时候看 |
 |--------|------|------------|
-| **1** | [`docs/week12-multimodal-crag.md`](docs/week12-multimodal-crag.md) | 第 12 周进行中：多模态 + CRAG |
+| **1** | [`docs/week12-multimodal-crag.md`](docs/week12-multimodal-crag.md) | **第 12 周已验收**：多模态 VLM caption + CRAG + 总复盘 |
 | **1b** | [`docs/week11-graph-rag.md`](docs/week11-graph-rag.md) | 第 11 周已验收：Graph RAG（Neo4j） |
 | **1b** | [`docs/production-upgrade.md`](docs/production-upgrade.md) | 第 10 周已验收：Qdrant + OpenSearch |
 | **2** | [`docs/production-gap.md`](docs/production-gap.md) §1 | demo vs 生产对照 |
@@ -26,7 +26,7 @@
 
 员工用自然语言问内部问题；系统从多库语料 **混合检索 + 重排** 后作答，带引用；低置信度 **拒答**；支持 **多轮改写**、**Agent 工具路由** 与 **ReAct**。
 
-## 当前能力（第 12 周进行中）
+## 当前能力（第 12 周已验收）
 
 | 能力 | 说明 |
 |------|------|

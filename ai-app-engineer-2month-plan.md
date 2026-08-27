@@ -419,14 +419,14 @@ Qdrant/OpenSearch   query_relations           search_visual
 ### 第 12 周：★ 多模态 + CRAG + 总复盘
 
 **必做**：
-- [ ] 补图/截图/幻灯语料 → `KB_multimodal`；工具 `search_visual`（精简版可接受）
-- [ ] 补易失败专项题；**CRAG / Self-RAG** 挂 Profile（精简版）
-- [ ] 总复盘：全部 KB × Profile × 工具 × 路由结果
-- [ ] 脱稿讲清扩展法：「KB → 策略 → 工具 → Agent」
+- [x] 补图/截图/幻灯语料 → `KB_multimodal`；工具 `search_visual`（图像 VLM caption，非手写图说）
+- [x] 补易失败专项题；**CRAG** 挂 Profile（一次 rewrite；`CRAG_ENABLED` kill switch）
+- [x] 总复盘：全部 KB × Profile × 工具 × 路由结果
+- [x] 脱稿讲清扩展法：「KB → 策略 → 工具 → Agent」（见 `docs/week12-multimodal-crag.md`）
 
-**产出**：多模态 + 纠错可演示；第 7–12 周能力复盘完成。
+**产出**：多模态 + 纠错可演示；第 7–12 周能力复盘完成。**验收日：2026-08-27**（分支 `week12/multimodal-crag`）。
 
-**仍可后置**：嵌入微调、公网部署、求职包装。
+**仍可后置**：嵌入微调、公网部署、求职包装；复合 PDF/PPT 上传系统。
 
 ---
 
@@ -458,7 +458,7 @@ Qdrant/OpenSearch   query_relations           search_visual
 | 第 9 周末 | Agent 经工具选 KB；路由专项 eval 通过（选对工具） |
 | 第 10 周末 | Qdrant + OpenSearch；物理分库 + 增量 ingest；eval 通过 ✅ 2026-08-16：recall 31/31，routing 6/6，答案 33/34 |
 | 第 11 周末 | Neo4j 关系 KB + `query_relations`；路由对照 |
-| 第 12 周末 | 多模态 + CRAG 精简版；12 周总复盘 |
+| 第 12 周末 | 多模态 + CRAG；12 周总复盘 ✅ 2026-08-27（VLM caption + search_visual；routing 12/12；CRAG 手测） |
 
 ---
 

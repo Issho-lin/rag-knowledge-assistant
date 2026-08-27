@@ -479,7 +479,7 @@ uv run python tests/eval/run_graph_compare.py
 | 2026-08-16 | **第 10 周收尾**：Qdrant/OpenSearch 可切换、物理分库、增量 ingest；口述同步（Gradio 已是 ReAct） |
 | 2026-08-16 | **第 10 周验收**：Qdrant+OS ingest 72 chunk；golden 33/34、recall 31/31、routing 6/6；eval 空库改按 KB 汇总 |
 | 2026-08-22 | **Graph RAG 通用化整改**：删除旧规则/本体/人员兼容链，改为开放域 GraphDocument、事务化增量、严格 GraphPlan 和关系白名单；单测 72；三类 ReAct 端到端通过 |
-| 2026-08-27 | **第 12 周**：多模态 PNG→VLM caption→`search_visual`；CRAG Profile 钩子；routing 12/12；单测 77；总复盘五库表 |
+| 2026-08-27 | **第 12 周验收收尾**：多模态 PNG→VLM caption→`search_visual`；CRAG 手测（滤空后 rewrite 再命中）；routing 12/12；单测 77；总复盘五库表 |
 
 ### 新功能迭代时更新清单
 
