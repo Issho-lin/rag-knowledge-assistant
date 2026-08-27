@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import json
 import re
+from pathlib import Path
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from ..core.llm import LLMClient
 from ..core.logging import get_logger
-from .extract import Triple
 from .models import GraphDocument, GraphEntity, GraphRelation
 
 log = get_logger(__name__)
@@ -19,6 +19,10 @@ _FENCE = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL)
 _SYSTEM = """从文档中抽取知识图谱。只输出 JSON，不要解释。
 自动识别文档中明确出现的实体、实体类型、实体属性、关系和关系属性。
 不要编造文档中没有的事实，不要把推理结论当成直接事实。
+实体类型和关系名称使用稳定、简短的英文 PascalCase / UPPER_SNAKE_CASE。
+同一实体在整篇文档中必须使用相同 id 和 type。实体别名放入 properties.aliases 数组。
+表格或列表明确表达先后顺序时，必须为相邻项目抽取 NEXT_STEP 关系；
+不要只抽取“流程包含步骤”而丢失可查询的顺序。
 格式：
 {"entities":[{"id":"实体名","type":"实体类型","properties":{}}],
  "relations":[{"source_id":"实体名","source_type":"实体类型",
@@ -35,35 +39,9 @@ def _parse_json(raw: str) -> dict:
     return json.loads(text)
 
 
-def extract_triples_with_llm(text: str, source: str) -> list[Triple]:
-    """对整篇 prose 做一次结构化抽取；调用失败返回空列表。"""
-    if not text.strip():
-        return []
-    try:
-        raw = LLMClient().invoke(
-            [
-                SystemMessage(content=_SYSTEM),
-                HumanMessage(content=text[:8000]),
-            ],
-            tier="cheap",
-        )
-        payload = _parse_json(raw)
-    except Exception as exc:
-        log.warning("graph.llm_extract_failed", source=source, error=str(exc)[:200])
-        return []
-
-    triples: list[Triple] = []
-    for item in payload.get("triples") or []:
-        rel = str(item.get("rel") or "").strip()
-        src = str(item.get("src") or "").strip()
-        dst = str(item.get("dst") or "").strip()
-        if rel not in ALLOWED_RELS or not src or not dst:
-            continue
-        if rel == "NEXT_STEP":
-            continue  # 审批链由有序列表规则抽，避免 LLM 把环节顺序抽乱
-        triples.append(Triple(rel, src, dst, source, {}, extractor="llm"))
-    log.info("graph.llm_extract_done", source=source, n=len(triples))
-    return triples
+def _document_title(text: str, source: str) -> str:
+    match = re.search(r"^#\s+(.+)$", text, re.MULTILINE)
+    return match.group(1).strip() if match else Path(source).stem
 
 
 def extract_graph_document_with_llm(
@@ -72,9 +50,13 @@ def extract_graph_document_with_llm(
     *,
     file_hash: str = "",
 ) -> GraphDocument:
-    """按文章中的 GraphDocument 形态抽取任意领域实体和关系。"""
+    """抽取任意领域实体和关系；失败抛错，禁止静默写入空图。"""
     if not text.strip():
-        return GraphDocument(source=source, file_hash=file_hash)
+        return GraphDocument(
+            source=source,
+            title=_document_title(text, source),
+            file_hash=file_hash,
+        )
     try:
         raw = LLMClient().invoke(
             [SystemMessage(content=_SYSTEM), HumanMessage(content=text[:12000])],
@@ -111,10 +93,11 @@ def extract_graph_document_with_llm(
         ]
         return GraphDocument(
             source=source,
+            title=_document_title(text, source),
             file_hash=file_hash,
             entities=entities,
             relations=relations,
         )
     except Exception as exc:
         log.warning("graph.llm_graph_extract_failed", source=source, error=str(exc)[:200])
-        return GraphDocument(source=source, file_hash=file_hash)
+        raise

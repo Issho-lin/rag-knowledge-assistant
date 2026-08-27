@@ -39,7 +39,7 @@ flowchart TB
         A2 --> A3[Embedding 分批≤20]
         A3 --> A4[("向量库 每 KB 一个<br/>Qdrant collection / Chroma 目录")]
         A2 --> A5[("BM25 每 KB 一个<br/>OpenSearch index / pkl")]
-        G1[kb_graph MD + 通讯录 CSV] --> G2[ingest-graph: 列角色 ETL + LLM 补抽]
+        G1[kb_graph MD] --> G2[ingest-graph: 通用 LLM GraphDocument 抽取]
         G2 --> G3[(Neo4j)]
     end
 
@@ -102,12 +102,9 @@ flowchart TB
 |------|------|
 | `ingest/` | 语料发现、按 Profile 切块、按 KB 物理分库写向量 + BM25 |
 | `graph/models.py` | 通用 `GraphEntity` / `GraphRelation` / `GraphDocument` 抽取模型 |
-| `graph/schema.py` | 结构化表格规则和可选领域约束，不限制 LLM 自动发现的新实体关系 |
-| `graph/extract.py` | 规则 ETL：表格/有序列表优先，保留确定性结构 |
-| `graph/extract_llm.py` | LLMGraphTransformer 风格自动抽取任意实体、关系、属性和证据 |
-| `graph/identity.py` | 实体对齐：以通讯录为主数据，统一姓名/工号 |
-| `graph/ingest.py` | 按 `SourceDoc.file_hash` 增量写 Neo4j |
-| `graph/plan.py` | 问句 → 通用 `GraphPlan`（LLM 规划，失败降级词典） |
+| `graph/extract_llm.py` | LLMGraphTransformer 风格自动抽取任意实体、关系、属性、别名和证据 |
+| `graph/ingest.py` | 动态 Label/关系规范化、开放域实体 ID 对齐、按来源原子增量写 Neo4j |
+| `graph/plan.py` | 问句 → 严格 `GraphPlan`；规划失败显式失败，不按旧领域词典猜测 |
 | `graph/query.py` | `GraphPlan` → 安全参数化 Cypher → chunk |
 | `kb/registry.py` | 四个 KB（policies / tabular / pdf / relations）与 tool 名、后端类型 |
 | `kb/profiles.py` | 每库切块 + 检索增强开关（decompose、expand_parent） |
@@ -146,18 +143,19 @@ rag-react-query
 | `tests/eval/run.py`（检索 + produce_answer） | golden **33/34**，recall@4 **31/31**（37 题中 3 道图题标 `skip_direct_eval`） |
 | `tests/eval/run_routing.py`（`--agent` 选型） | routing **9/9**（含 3 道关系题 → `query_relations`） |
 | `tests/eval/run_graph_compare.py`（文档检索 vs 图检索） | 3 道关系题：文档 0/0/1 命中，图 3/3 命中 |
-| 单测 | **63** passed（`--ignore=tests/eval`） |
+| 单测 | **72** passed（`--ignore=tests/eval`） |
 
 三路检索对照（vector / hybrid / hybrid+rerank）：`tests/eval/compare.py`。
 
 ## 关键配置（`.env`）
 
 - `RERANK_ENABLED=true` — 默认开重排
+- `RERANK_DEVICE=cpu` — CrossEncoder 默认固定 CPU，避免 macOS MPS native crash
 - `REFUSE_MIN_RERANK_SCORE=0.15` — rerank 后低分过滤阈值（滤空 → 拒答）
 - `QUERY_DECOMPOSE_ENABLED=false` — 子查询分解（默认关；ReAct 复合题主要靠 Agent 拆 tool query）
 - `CHAT_MODEL_STRONG` / `CHAT_MODEL_CHEAP` — 生成 / 改写 / 路由分级
-- `GRAPH_LLM_EXTRACT=true` — 图入库时用 LLM 补抽散文关系（关掉则只跑规则 ETL）
-- `GRAPH_QUERY_PLANNER=true` — 图查询用 LLM 出 `GraphPlan`（关掉则降级本体词典）
+- `GRAPH_LLM_EXTRACT=true` — 通用图入库必需；关闭时显式失败，不回退旧领域规则
+- `GRAPH_QUERY_PLANNER=true` — 通用图查询必需；关闭时显式失败，不按词典猜关系
 - `NEO4J_URI` / `NEO4J_USER` / `NEO4J_PASSWORD` — 图后端连接
 
 ## 相关文档

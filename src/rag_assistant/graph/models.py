@@ -31,6 +31,7 @@ class GraphRelation(BaseModel):
 
 class GraphDocument(BaseModel):
     source: str
+    title: str = ""
     file_hash: str = ""
     entities: list[GraphEntity] = Field(default_factory=list)
     relations: list[GraphRelation] = Field(default_factory=list)

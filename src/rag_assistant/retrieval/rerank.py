@@ -53,11 +53,13 @@ def _get_model():
         if _model is None:
             from sentence_transformers import CrossEncoder
 
-            name = get_settings().rerank_model
+            settings = get_settings()
+            name = settings.rerank_model
             resolved = _resolve_model_path(name)
-            log.info("rerank.loading", model=name, resolved=resolved)
-            _model = CrossEncoder(resolved)
-            log.info("rerank.loaded", model=resolved)
+            device = settings.rerank_device
+            log.info("rerank.loading", model=name, resolved=resolved, device=device)
+            _model = CrossEncoder(resolved, device=device)
+            log.info("rerank.loaded", model=resolved, device=device)
     return _model
 
 

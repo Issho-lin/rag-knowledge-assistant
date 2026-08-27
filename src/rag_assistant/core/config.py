@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     langfuse_host: str = Field("https://cloud.langfuse.com", alias="LANGFUSE_HOST")
 
     rerank_model: str = Field("BAAI/bge-reranker-base", alias="RERANK_MODEL")
+    rerank_device: str = Field("cpu", alias="RERANK_DEVICE")
     rerank_enabled: bool = Field(True, alias="RERANK_ENABLED")
 
     refuse_min_rerank_score: float = Field(0.15, alias="REFUSE_MIN_RERANK_SCORE")

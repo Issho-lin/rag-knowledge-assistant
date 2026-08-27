@@ -34,7 +34,7 @@
 | 入库 | `--ingest` 文档增量；`--ingest-graph` 抽关系写 Neo4j（同样增量） |
 | 检索 | 文档题 hybrid + rerank；关系题 `GraphPlan` → 参数化 Cypher（含多跳） |
 | 问答路径 | `--query` 直连（够不到图库） · `--agent` 路由 · **`--react` 主路径** |
-| 评测 | golden 33/34 · recall 31/31 · routing 9/9 · 单测 63 |
+| 评测 | golden 33/34 · recall 31/31 · routing 9/9 · 单测 72 |
 
 ## 布局
 

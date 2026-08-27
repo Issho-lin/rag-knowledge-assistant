@@ -11,18 +11,18 @@
 | 项 | 当前值（截至 2026-08-20） |
 |----|---------------------------|
 | 场景 | 虚构「星云科技」内部制度 / FAQ / 通讯录 / PDF 手册 / 组织与依赖关系问答 |
-| 语料规模 | 文档侧 **14** 篇（MD/HTML/CSV/PDF）→ **72** 块（policies=63 / tabular=1 / pdf=8）；关系侧 **3** 篇 MD + 通讯录 |
+| 语料规模 | 文档侧 **14** 篇（MD/HTML/CSV/PDF）→ **72** 块（policies=63 / tabular=1 / pdf=8）；关系侧 **3** 篇 MD |
 | 图谱规模 | 当前样例图：Person **10** / Service **5** / Step **4**，边 **16**；抽取模型已支持任意实体/关系/属性 |
 | 知识库 | 四库 policies / tabular / pdf / **relations**；前三库**物理分库**（各自向量 collection + BM25 索引）+ Profile，第四库走 Neo4j |
 | 存储 | 向量 `qdrant\|chroma`；关键词 `opensearch\|pkl`；图 **Neo4j**；CI 默认 Chroma + pkl，不连图 |
-| 入库 | `--ingest` **增量**（`doc_id` + `file_hash`）；`--ingest-graph` **增量**（`SourceDoc.file_hash`）；`--reset` 全量 |
+| 入库 | `--ingest` **增量**（`doc_id` + `file_hash`）；`--ingest-graph` **增量**（`SourceDoc.file_hash + pipeline_version`）；`--reset` 全量 |
 | 回归题集 | **37** 道人工题（含 **3** 道「库外应拒答」、**3** 道关系题） |
 | 答案通过率 | **33/34**（`run.py`，Qdrant+OpenSearch；3 道关系题标 `skip_direct_eval` 不计；1 题 `release-window` 漏写「双人复核」，检索已命中） |
 | 检索召回 | **31/31**（前 4 条是否命中期望文档；拒答题与关系题不计） |
 | 路由选型 | **9/9**（`run_routing.py`：`--agent` 工具选型，含 3 道关系题选中 `query_relations`） |
 | 图 vs 文档对照 | 3 道关系题：文档检索命中 0 / 0 / 1，图检索 **3/3** 命中（`run_graph_compare.py`） |
 | ReAct 端到端 | **6/7**（`run_react.py`，7 题子集） |
-| 单测 | **63** passed（默认 Chroma + pkl，含增量入库与图抽取；图单测不连 Neo4j） |
+| 单测 | **72** passed（默认 Chroma + pkl，含通用图模型、规划和查询安全测试） |
 | 检索方案对照 | 纯向量 / 混合 / 混合+重排，在本题集上分数相同 |
 | **默认演示 / 产品路径** | **`--react` ReAct**（CLI 与 Gradio 一致） |
 | 辅助路径 | `--query` 全库直连 RAG（eval 底座）；`--agent` 路由单库（理解对照） |
@@ -32,7 +32,7 @@
 
 ## 已实现 vs 未实现
 
-**已做完的**：入库（含 PDF）、**物理分库 + Profile**、**可切换存储**（Qdrant/Chroma、OpenSearch/pkl）、**增量入库**、混合检索、重排、带来源的回答、规则+模型两层拒答、多轮改写、**Agent 工具路由（`--agent`）**、**ReAct 多工具（`--react`，CLI 与 Gradio 主路径）**、**Graph RAG（Neo4j + `query_relations`，规则/LLM 双通道通用抽取 + 实体对齐 + 通用 GraphPlan + 参数化 Cypher）**、可观测、可重复评测。
+**已做完的**：入库（含 PDF）、**物理分库 + Profile**、**可切换存储**（Qdrant/Chroma、OpenSearch/pkl）、**增量入库**、混合检索、重排、带来源的回答、规则+模型两层拒答、多轮改写、**Agent 工具路由（`--agent`）**、**ReAct 多工具（`--react`，CLI 与 Gradio 主路径）**、**Graph RAG（Neo4j + `query_relations`，通用 GraphDocument 自动抽取 + 原子增量 + 通用 GraphPlan + 参数化 Cypher）**、可观测、可重复评测。
 
 **还没做的**（被问到如实说）：多模态检索、CRAG / Self-RAG 纠错、扩大 ReAct golden、Ragas 自动化打分、异步入库队列、图谱的时效性（关系没有生效/失效时间）。
 
@@ -341,13 +341,11 @@ ReAct 会把**多次工具调用**的 chunks 合并后再建引用，所以复�
 
 对，手写 JSON 就变成 demo 了。我的原则是**语料是唯一事实源**，图必须从语料自动抽。
 
-主力是**规则 ETL**。但这里有个关键设计：不能绑死某一篇文档的列名。我在本体里定义了「列角色」和它们的同义词——「直属上级 / 上级 / 汇报对象 / manager / reports_to」都映射到 `manager` 这个角色。抽取时先认表头属于哪个角色，再按角色取值。换一篇列名不同的表，不用改代码。
+当前使用 **LLMGraphTransformer 风格的通用 GraphDocument 抽取**：模型自动识别实体、类型、属性、关系、证据和明确的顺序关系，不在代码里枚举 Person、Service 或固定关系。
 
-第二层是**实体对齐**。同一个人在通讯录里是「周凯 + 工号 XY007」，在架构文档里可能只写「周凯」，也可能只写工号。我拿通讯录当**人员主数据**建索引，把姓名和工号都归一到同一个规范名，否则图里会出现两个不连通的「周凯」，多跳直接断掉。
+抽取后还有一层确定性归一化：实体类型统一为 PascalCase，关系统一为 UPPER_SNAKE_CASE；模型机器 ID 会映射到规范显示名，同名实体可以叠加多个 Label，避免 `Employee/Person` 造成重复节点。
 
-第三层才是 **LLM 补抽**，用来捞散文里规则表达不了的关系。但它被限制得很死：只允许输出本体里定义的关系类型，越界的丢弃。审批环节的**顺序**我明确不让 LLM 抽——它很容易把顺序打乱，而有序列表的序号是确定信息，用规则读更可靠。
-
-入库也是增量的：每篇源文档在图里有个 `SourceDoc` 节点存 `file_hash`，没变就跳过；变了先把这篇 source 产生的边删掉再重新 MERGE，避免改文档后留下幽灵关系。
+入库按 `SourceDoc.file_hash + pipeline_version` 增量，代码升级也会触发迁移。关键点是先把所有待更新文档抽取成功，再在一个 Neo4j 事务里清理旧来源并写入新图；抽取超时不会提前清库，也不会留下半图。删除源文档时同样清理该来源的边和孤立节点。
 
 **Q：** 查询时是让大模型写 Cypher 吗？
 
@@ -355,9 +353,9 @@ ReAct 会把**多次工具调用**的 chunks 合并后再建引用，所以复�
 
 不是，这点我专门避开了。让 LLM 直接写 Cypher 有两个问题：一是它可能写出语法对但语义错的查询，二是等于把数据库执行权交给了模型输出，注入风险没法兜底。
 
-我的做法是让 LLM 只出一个**查询计划**——一个受 Pydantic 校验的结构体，字段就几个：查什么模式（汇报线 / 依赖 / 审批链）、主体是谁、跳几跳、是否要精确跳数。Cypher 模板是代码里写死的，实体作为 `$name` 参数传进去，跳数只接受校验后的 1 到 3 的整数。这样既拿到了自然语言理解能力，又不用防注入。
+我的做法是让 LLM 只出一个受 Pydantic 严格校验的 **GraphPlan**：查询意图、实体、实体类型、关系类型、方向、跳数、属性过滤和返回字段。Cypher 模板固定，值全部参数化；关系类型还必须存在于当前 Neo4j 目录，模型编造的关系会被拒绝。
 
-LLM 规划失败或超时就降级到**本体词典**：问句里有「上级 / 汇报」就走汇报线，有「隔级 / 上级的上级」就把跳数提到 2。降级路径不依赖模型，也不把流程名写死。
+规划失败或关闭规划器时显式失败，不再用「上级/依赖/审批链」领域词典猜测。这样牺牲一次降级可用性，换取开放域查询不会静默走错关系。
 
 **Q：** 图返回的结果怎么接回 Agent？
 
@@ -418,12 +416,11 @@ LLM 规划失败或超时就降级到**本体词典**：问句里有「上级 / 
 | KB 工具 | `kb/search.py`：`build_kb_tools`、`run_kb_retrieve`、`format_chunks_observation` |
 | 知识库注册 | `kb/registry.py`（policies / tabular / pdf / relations，带 `backend` 字段） |
 | 物理分库工厂 | `retrieval/vector_store.py`、`retrieval/bm25_store.py`（按 `kb_id`） |
-| 图本体 / 列角色 | `graph/schema.py`：`ALLOWED_RELS`、`COLUMN_ROLES`、`SCHEMA_CARD` |
-| 图抽取 | `graph/extract.py`（规则）、`graph/extract_llm.py`（补抽） |
-| 实体对齐 | `graph/identity.py`：`IdentityIndex`（通讯录当主数据） |
-| 图增量入库 | `graph/ingest.py`：`SourceDoc.file_hash` → 删该 source 的边再 MERGE |
-| 图查询计划 | `graph/plan.py`：`GraphPlan` + `infer_plan_from_lexicon` 降级 |
-| 参数化 Cypher | `graph/query.py`：`execute_plan`、`_var_len`（跳数只接受 1–3） |
+| 通用图抽取 | `graph/extract_llm.py`：文本 → `GraphDocument`，失败不静默吞掉 |
+| 实体/关系归一化 | `graph/ingest.py`：规范显示名主键、动态 Label、关系命名规范化 |
+| 图增量入库 | `graph/ingest.py`：先抽取成功，再按 hash + pipeline version 单事务替换 |
+| 图查询计划 | `graph/plan.py`：严格 `GraphPlan`，禁止旧字段和领域词典降级 |
+| 参数化 Cypher | `graph/query.py`：按通用 intent 编译；关系白名单 + 参数化值 |
 | 增量指纹 | `ingest/fingerprint.py`：`document_id` / `content_hash` |
 | 增量同步 | `ingest/run._sync_kb`：跳过 / upsert / 按 `doc_id` 删除 |
 | 路由选型（辅助） | `query/modes/agent_route/select.select_tool_names` |
@@ -483,7 +480,7 @@ uv run python tests/eval/run_graph_compare.py
 | 2026-08-02 | **第 9 周收尾**：`run_react.py` 6/7、Gradio ReAct、learning-log 归档 |
 | 2026-08-16 | **第 10 周收尾**：Qdrant/OpenSearch 可切换、物理分库、增量 ingest；口述同步（Gradio 已是 ReAct） |
 | 2026-08-16 | **第 10 周验收**：Qdrant+OS ingest 72 chunk；golden 33/34、recall 31/31、routing 6/6；eval 空库改按 KB 汇总 |
-| 2026-08-20 | **第 11 周 Graph RAG**：新增场景 H（关系检索）；四库口径、routing 9/9、通用 GraphDocument 抽取、单测 63；「还没做的」移除 Graph RAG |
+| 2026-08-22 | **Graph RAG 通用化整改**：删除旧规则/本体/人员兼容链，改为开放域 GraphDocument、事务化增量、严格 GraphPlan 和关系白名单；单测 72；三类 ReAct 端到端通过 |
 
 ### 新功能迭代时更新清单
 

@@ -8,112 +8,156 @@ import re
 from ..core.config import get_settings
 from ..core.logging import get_logger
 from .client import neo4j_session
-from .identity import IdentityIndex
-from .plan import GraphPlan, infer_plan_from_lexicon, plan_graph_query
-from .schema import REL_DEPENDS_ON, REL_REPORTS_TO
+from .plan import GraphPlan, plan_graph_query
 
 log = get_logger(__name__)
 
 
-def classify_intent(question: str) -> str:
-    """兼容旧测试名：本体词典模式。"""
-    plan = infer_plan_from_lexicon(question)
-    if plan.pattern == "reports_to" and plan.hops >= 2:
-        return "reports_2hop"
-    if plan.pattern == "depends_on" and plan.hops >= 2:
-        return "depends_2hop"
-    return {
-        "reports_to": "reports_1hop",
-        "depends_on": "depends_1hop",
-        "approval_chain": "approval_chain",
-        "neighborhood": "neighborhood",
-    }[plan.pattern]
-
-
-def match_entity(question: str, names: list[str]) -> str | None:
-    hits = [n for n in names if n and n in question]
-    if not hits:
-        return None
-    return max(hits, key=len)
-
-
-def _var_len(rel: str, hops: int, exact: bool) -> str:
-    if rel not in {REL_REPORTS_TO, REL_DEPENDS_ON}:
-        raise ValueError(f"不允许的关系类型: {rel}")
-    hops = min(max(hops, 1), 3)
-    if hops == 1:
-        return f"-[:{rel}]->"
-    if exact:
-        return f"-[:{rel}*{hops}]->"
-    return f"-[:{rel}*1..{hops}]->"
-
-
-def _safe_relationships(relations: list[str]) -> list[str]:
-    """关系类型来自模型，但只能进入受限 Cypher 标识符位置。"""
-    return [
+def _validated_relationships(
+    requested: list[str], available: list[str]
+) -> list[str] | None:
+    """关系必须真实存在于当前图库；None 表示模型请求了未知关系。"""
+    cleaned = [
         rel
-        for rel in relations
+        for rel in requested
         if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,63}", rel)
     ][:16]
+    if requested and (len(cleaned) != len(requested) or not set(cleaned) <= set(available)):
+        return None
+    return cleaned
 
 
-def _generic_plan_query(session, plan: GraphPlan) -> list[dict[str, Any]]:
-    """通用 GraphPlan 查询；旧领域 pattern 继续由下方兼容模板处理。"""
-    if plan.pattern != "neighborhood" or plan.intent not in {
-        "entity_lookup",
-        "relationship_lookup",
-        "path_search",
-        "attribute_lookup",
-        "neighborhood",
-    }:
+def _entity_rows(session, plan: GraphPlan) -> list[dict[str, Any]]:
+    cypher = """
+    MATCH (n:Entity)
+    WHERE (size($entities) = 0 OR n.name IN $entities)
+      AND (size($types) = 0 OR any(label IN labels(n) WHERE label IN $types))
+      AND all(key IN keys($filters) WHERE n[key] = $filters[key])
+    RETURN n.name AS name,
+           [label IN labels(n) WHERE label <> 'Entity'] AS types,
+           properties(n) AS properties
+    ORDER BY coalesce(n._order, 0), n.name
+    LIMIT $limit
+    """
+    return list(
+        session.run(
+            cypher,
+            entities=plan.entities,
+            types=plan.entity_types,
+            filters=plan.filters,
+            limit=plan.limit,
+        )
+    )
+
+
+def _generic_plan_query(
+    session,
+    plan: GraphPlan,
+    *,
+    available_relations: list[str],
+) -> list[dict[str, Any]]:
+    """按 intent 执行固定模板；模型输出只能作为参数或受限枚举。"""
+    relation_types = _validated_relationships(plan.relation_types, available_relations)
+    if relation_types is None:
+        log.warning("graph.unknown_relation", requested=plan.relation_types)
         return []
-    entities = plan.entities or ([plan.entity] if plan.entity else [])
-    if not entities:
+    if plan.intent in {"entity_lookup", "attribute_lookup"}:
+        output = []
+        for row in _entity_rows(session, plan):
+            properties = dict(row["properties"])
+            for internal in (
+                "key",
+                "sources",
+                "evidence",
+                "confidence",
+                "properties_json",
+                "aliases",
+                "_order",
+            ):
+                properties.pop(internal, None)
+            if plan.return_fields:
+                properties = {
+                    key: properties.get(key)
+                    for key in plan.return_fields
+                    if key in properties
+                }
+            output.append(
+                {
+                    "text": (
+                        f"实体：{row['name']}；类型：{'、'.join(row['types']) or 'Entity'}；"
+                        f"属性：{properties}"
+                    ),
+                    "source": "graph:entity",
+                }
+            )
+        return output
+    if not plan.entities:
         return []
-    relation_types = _safe_relationships(plan.relation_types)
-    rel_filter = ""
-    if relation_types:
-        rel_filter = "WHERE ALL(r IN relationships(path) WHERE type(r) IN $rels)"
+    if plan.intent == "relationship_lookup":
+        if len(plan.entities) >= 2:
+            source, target = plan.entities[:2]
+        else:
+            source, target = plan.entities[0], ""
+        pattern = {
+            "outgoing": "(a:Entity {name: $source})-[r]->(b:Entity)",
+            "incoming": "(a:Entity {name: $source})<-[r]-(b:Entity)",
+            "both": "(a:Entity {name: $source})-[r]-(b:Entity)",
+        }[plan.direction]
+        effective_relations = list(relation_types)
+        if (
+            plan.target_entity_types
+            and "MENTIONS" in available_relations
+            and "MENTIONS" not in effective_relations
+        ):
+            effective_relations.append("MENTIONS")
+        rows = list(
+            session.run(
+                f"""
+                MATCH {pattern}
+                WHERE ($target = '' OR b.name = $target)
+                  AND (size($rels) = 0 OR type(r) IN $rels)
+                  AND (size($types) = 0 OR any(label IN labels(b) WHERE label IN $types))
+                RETURN a.name AS source, type(r) AS relation,
+                       b.name AS target, properties(r) AS properties
+                ORDER BY coalesce(b._order, 0), b.name
+                LIMIT $limit
+                """,
+                source=source,
+                target=target,
+                rels=effective_relations,
+                types=plan.target_entity_types,
+                limit=plan.limit,
+            )
+        )
+        deduplicated: dict[str, dict[str, Any]] = {}
+        for row in rows:
+            deduplicated.setdefault(str(row["target"]), row)
+        return [
+            {
+                "text": f"{r['source']} -[{r['relation']}]-> {r['target']}；属性：{dict(r['properties'])}",
+                "source": "graph:relationship",
+            }
+            for r in deduplicated.values()
+        ]
+
     direction = {
         "outgoing": "->",
         "incoming": "<-",
         "both": "-",
     }[plan.direction]
-    upper = min(max(plan.max_hops, plan.hops), 3)
+    upper = min(max(plan.max_hops, 1), 3)
     lower = min(max(plan.min_hops, 1), upper)
     if lower == upper:
         length = str(lower)
     else:
         length = f"{lower}..{upper}"
-    if plan.intent == "relationship_lookup" and len(entities) >= 2:
-        cypher = """
-        MATCH (a {name: $source})-[r]-(b {name: $target})
-        WHERE size($rels) = 0 OR type(r) IN $rels
-        RETURN labels(a)[0] AS source_type, a.name AS source,
-               type(r) AS relation, labels(b)[0] AS target_type,
-               coalesce(b.name, b.id) AS target, r AS properties
-        LIMIT $limit
-        """
-        rows = list(
-            session.run(
-                cypher,
-                source=entities[0],
-                target=entities[1],
-                rels=relation_types,
-                limit=plan.limit,
-            )
-        )
-        return [
-            {
-                "text": f"{r['source']} -[{r['relation']}]-> {r['target']}",
-                "source": "graph:relationship",
-            }
-            for r in rows
-        ]
     arrow = f"-[rels*{length}]{direction}" if direction != "-" else f"-[rels*{length}]-"
+    target_filter = "AND target.name = $target" if len(plan.entities) >= 2 else ""
     cypher = f"""
-    MATCH path = (start {{name: $entity}}){arrow}(target)
-    {rel_filter}
+    MATCH path = (start:Entity {{name: $source}}){arrow}(target:Entity)
+    WHERE (size($rels) = 0 OR ALL(r IN relationships(path) WHERE type(r) IN $rels))
+      AND (size($types) = 0 OR any(label IN labels(target) WHERE label IN $types))
+      {target_filter}
     RETURN [n IN nodes(path) | coalesce(n.name, n.id)] AS chain,
            [r IN relationships(path) | type(r)] AS relations,
            length(path) AS hops
@@ -123,8 +167,10 @@ def _generic_plan_query(session, plan: GraphPlan) -> list[dict[str, Any]]:
     rows = list(
         session.run(
             cypher,
-            entity=entities[0],
+            source=plan.entities[0],
+            target=plan.entities[1] if len(plan.entities) >= 2 else "",
             rels=relation_types,
+            types=plan.target_entity_types,
             limit=plan.limit,
         )
     )
@@ -155,170 +201,184 @@ def _chunks(rows: list[dict[str, Any]], *, source: str) -> list[dict[str, Any]]:
     return out
 
 
-def _catalog(session) -> dict[str, list[str]]:
-    person_rows = list(session.run("MATCH (p:Person) RETURN p.name AS name, p.emp_id AS emp_id"))
-    people = [r["name"] for r in person_rows if r.get("name")]
-    services = [r["name"] for r in session.run("MATCH (s:Service) RETURN s.name AS name") if r.get("name")]
-    processes = [
-        r["name"]
-        for r in session.run("MATCH (t:Step) RETURN DISTINCT t.process AS name")
-        if r.get("name")
+def _candidate_terms(question: str) -> list[str]:
+    compact = re.sub(r"[\s，。！？、；：,.!?;:（）()]+", "", question)
+    terms = {
+        compact[start:end]
+        for start in range(len(compact))
+        for end in range(start + 2, min(len(compact), start + 12) + 1)
+    }
+    return sorted(terms, key=len, reverse=True)[:200]
+
+
+def _catalog(session, question: str) -> dict[str, Any]:
+    """只召回问题相关的实体候选，并附上图库真实 schema。"""
+    candidates = list(
+        session.run(
+            """
+            MATCH (n:Entity)
+            WHERE any(term IN $terms WHERE n.name CONTAINS term OR term = n.name)
+               OR any(alias IN coalesce(n.aliases, [])
+                      WHERE any(term IN $terms WHERE alias CONTAINS term OR term = alias))
+            OPTIONAL MATCH (n)-[r]->(target:Entity)
+            RETURN n.name AS name,
+                   [label IN labels(n) WHERE label <> 'Entity'] AS types,
+                   coalesce(n.aliases, []) AS aliases,
+                   collect(DISTINCT type(r)) AS outgoing_relations,
+                   collect(DISTINCT [label IN labels(target) WHERE label <> 'Entity'])
+                       AS outgoing_target_types
+            ORDER BY size(n.name) DESC
+            LIMIT 50
+            """,
+            terms=_candidate_terms(question),
+        )
+    )
+    relation_types = [
+        str(row["relation_type"])
+        for row in session.run(
+            "MATCH ()-[r]->() RETURN DISTINCT type(r) AS relation_type ORDER BY relation_type"
+        )
+        if row.get("relation_type")
     ]
-    entities = [
-        r["name"]
-        for r in session.run("MATCH (e:Entity) RETURN DISTINCT e.name AS name")
-        if r.get("name")
+    entity_types = [
+        str(row["label"])
+        for row in session.run(
+            """
+            MATCH (n:Entity)
+            UNWIND labels(n) AS label
+            WITH DISTINCT label WHERE label <> 'Entity'
+            RETURN label ORDER BY label
+            """
+        )
+        if row.get("label")
     ]
     return {
-        "people": people,
-        "services": services,
-        "processes": processes,
-        "entities": entities,
-        "person_records": [
-            {"name": r["name"], "emp_id": r.get("emp_id") or ""} for r in person_rows if r.get("name")
+        "entity_candidates": [
+            {
+                "name": row["name"],
+                "types": list(row.get("types") or []),
+                "aliases": list(row.get("aliases") or []),
+                "outgoing_relations": [
+                    item for item in (row.get("outgoing_relations") or []) if item
+                ],
+                "outgoing_target_types": [
+                    item
+                    for item in (row.get("outgoing_target_types") or [])
+                    if item
+                ],
+            }
+            for row in candidates
         ],
+        "entity_types": entity_types,
+        "relation_types": relation_types,
     }
 
 
-def execute_plan(session, plan: GraphPlan) -> list[dict[str, Any]]:
-    generic = _generic_plan_query(session, plan)
-    if generic:
-        return _chunks(generic, source="graph:generic")
-    if plan.pattern == "approval_chain":
-        records = list(
-            session.run(
-                """
-                MATCH (s:Step)
-                WHERE $process = '' OR s.process CONTAINS $process
-                OPTIONAL MATCH (s)-[:NEXT]->(n:Step)
-                RETURN s.seq AS seq, s.name AS name, s.actor AS actor,
-                       s.process AS process, n.name AS next_name, s.source AS source
-                ORDER BY s.process, s.seq
-                """,
-                process=plan.process or "",
-            )
-        )
-        if not records:
-            return []
-        by_proc: dict[str, list] = {}
-        source = "kb_graph"
-        for r in records:
-            proc = r["process"] or "流程"
-            by_proc.setdefault(proc, []).append(r)
-            source = r.get("source") or source
-        blocks = []
-        for proc, items in by_proc.items():
-            lines = []
-            for r in items:
-                nxt = f" → 下一环「{r['next_name']}」" if r.get("next_name") else ""
-                lines.append(f"{r['seq']}. {r['name']}（{r['actor']}）{nxt}")
-            blocks.append(f"{proc}：\n" + "\n".join(lines))
-        return _chunks([{"text": "\n\n".join(blocks), "source": source}], source=source)
+def _resolve_candidate(
+    entity: str,
+    catalog: dict[str, Any],
+    *,
+    relation_types: list[str] | None = None,
+    entity_types: list[str] | None = None,
+) -> str | None:
+    candidates = list(catalog["entity_candidates"])
+    if relation_types:
+        compatible = [
+            item
+            for item in candidates
+            if set(item["outgoing_relations"]) & set(relation_types)
+        ]
+        if compatible:
+            candidates = compatible
+    if entity_types:
+        compatible = [
+            item for item in candidates if set(item["types"]) & set(entity_types)
+        ]
+        if compatible:
+            candidates = compatible
+    for item in candidates:
+        if entity == item["name"]:
+            return item["name"]
+    for item in candidates:
+        if entity in item["aliases"]:
+            return item["name"]
+    fuzzy = [
+        item["name"]
+        for item in candidates
+        if entity in item["name"]
+        or item["name"] in entity
+        or any(entity in alias or alias in entity for alias in item["aliases"])
+    ]
+    return max(fuzzy, key=len) if fuzzy else None
 
-    if not plan.entity:
-        return []
 
-    if plan.pattern == "reports_to":
-        rel = _var_len(REL_REPORTS_TO, plan.hops, plan.exact_hops)
-        cypher = f"""
-        MATCH path = (a:Person {{name: $name}}){rel}(b:Person)
-        WITH a, b, length(path) AS hops, [n IN nodes(path) | n.name] AS names
-        RETURN a.name AS src, b.name AS dst, b.title AS title,
-               a.emp_id AS emp_id, b.emp_id AS mgr_id, hops AS hops, names AS chain
-        ORDER BY hops
-        """
-        records = list(session.run(cypher, name=plan.entity))
-        return _chunks(
-            [
-                {
-                    "text": (
-                        f"{r['src']}（{r['emp_id']}）到 {r['dst']}（{r['mgr_id']}，{r['title']}）"
-                        f"共 {int(r['hops'])} 跳。路径：{' → '.join(r['chain'])}。"
-                    ),
-                    "source": "graph:REPORTS_TO",
-                }
-                for r in records
-            ],
-            source="graph:REPORTS_TO",
-        )
-
-    if plan.pattern == "depends_on":
-        rel = _var_len(REL_DEPENDS_ON, plan.hops, plan.exact_hops)
-        cypher = f"""
-        MATCH path = (a:Service {{name: $name}}){rel}(b:Service)
-        WITH a, b, length(path) AS hops, [n IN nodes(path) | n.name] AS names
-        RETURN a.name AS src, b.name AS dst, hops AS hops, names AS chain
-        ORDER BY hops, dst
-        """
-        records = list(session.run(cypher, name=plan.entity))
-        return _chunks(
-            [
-                {
-                    "text": (
-                        f"{r['src']} 依赖 {r['dst']}（{int(r['hops'])} 跳）。"
-                        f"路径：{' → '.join(r['chain'])}。"
-                    ),
-                    "source": "graph:DEPENDS_ON",
-                }
-                for r in records
-            ],
-            source="graph:DEPENDS_ON",
-        )
-
-    records = list(
-        session.run(
-            """
-            MATCH (a {name: $name})-[r]-(b)
-            RETURN labels(a)[0] AS la, a.name AS src, type(r) AS rel,
-                   labels(b)[0] AS lb, coalesce(b.name, b.id) AS dst
-            LIMIT 20
-            """,
-            name=plan.entity,
-        )
+def execute_plan(
+    session,
+    plan: GraphPlan,
+    *,
+    available_relations: list[str],
+) -> list[dict[str, Any]]:
+    rows = _generic_plan_query(
+        session,
+        plan,
+        available_relations=available_relations,
     )
-    return _chunks(
-        [
-            {
-                "text": f"{r['la']}:{r['src']} -[{r['rel']}]- {r['lb']}:{r['dst']}",
-                "source": "graph:neighborhood",
-            }
-            for r in records
-        ],
-        source="graph:neighborhood",
-    )
+    return _chunks(rows, source=f"graph:{plan.intent}")
 
 
 def query_relations(question: str, *, k: int = 8) -> list[dict[str, Any]]:
     s = get_settings()
     with neo4j_session() as session:
-        catalog = _catalog(session)
-        if s.graph_query_planner:
-            plan = plan_graph_query(question, catalog=catalog)
-        else:
-            plan = infer_plan_from_lexicon(question)
-        people = catalog.get("person_records") or [{"name": n, "emp_id": ""} for n in catalog["people"]]
-        index = IdentityIndex(people)
-        linked = None
-        plan_entity = plan.entity or (plan.entities[0] if plan.entities else None)
-        if plan_entity:
-            linked = index.resolve(plan_entity)
-        if not linked:
-            linked = index.link_in_question(question, extra=catalog["services"])
-        if linked:
-            updates: dict[str, Any] = {"entity": linked}
-            if plan.entities:
-                updates["entities"] = [linked, *plan.entities[1:]]
-            plan = plan.model_copy(update=updates)
-        if plan.pattern == "approval_chain" and not plan.process and catalog["processes"]:
-            hinted = match_entity(question, catalog["processes"])
-            if hinted:
-                plan = plan.model_copy(update={"process": hinted})
-        chunks = execute_plan(session, plan)
+        catalog = _catalog(session, question)
+        if not s.graph_query_planner:
+            raise RuntimeError("GRAPH_QUERY_PLANNER=false：通用图查询禁止按旧领域词典猜测")
+        plan = plan_graph_query(question, catalog=catalog)
+        resolutions = {
+            entity: _resolve_candidate(
+                entity,
+                catalog,
+                relation_types=plan.relation_types,
+                entity_types=plan.entity_types,
+            )
+            for entity in plan.entities
+        }
+        resolved = [value for value in resolutions.values() if value]
+        unknown_entities = [
+            entity for entity, value in resolutions.items() if value is None
+        ]
+        valid_types = [
+            entity_type
+            for entity_type in plan.entity_types
+            if entity_type in catalog["entity_types"]
+        ]
+        valid_target_types = [
+            entity_type
+            for entity_type in plan.target_entity_types
+            if entity_type in catalog["entity_types"]
+        ]
+        if unknown_entities and plan.intent not in {"entity_lookup", "attribute_lookup"}:
+            log.warning("graph.unknown_entity", entities=unknown_entities)
+            return []
+        if unknown_entities and not valid_types:
+            log.warning("graph.unknown_entity_or_type", entities=unknown_entities)
+            return []
+        plan = plan.model_copy(
+            update={
+                "entities": resolved,
+                "entity_types": valid_types,
+                "target_entity_types": valid_target_types,
+            }
+        )
+        chunks = execute_plan(
+            session,
+            plan,
+            available_relations=catalog["relation_types"],
+        )
     log.info(
         "graph.query",
-        pattern=plan.pattern,
-        hops=plan.hops,
-        entity=plan.entity,
+        intent=plan.intent,
+        hops=f"{plan.min_hops}..{plan.max_hops}",
+        entities=plan.entities,
         hits=len(chunks),
         question=question[:80],
     )

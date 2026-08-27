@@ -45,7 +45,7 @@ docker compose ps                    # 确认 neo4j healthy
 | # | 交付 | 验收 |
 |---|------|------|
 | 1 | prose 语料（组织架构、系统依赖、制度里的审批表） | 与通讯录可对齐 |
-| 2 | `ingest-graph`：列角色规则 ETL + LLM 补抽 → Neo4j 增量 | 非 JSON 为唯一源 |
+| 2 | `ingest-graph`：通用 GraphDocument 抽取 → Neo4j 原子增量 | 非 JSON 为唯一源 |
 | 3 | `query_relations`：Cypher 查询，返回 Observation | 手测 3 道关系题 |
 | 4 | Registry 第四库 `relations` + `build_kb_tools` | ReAct 能选用 |
 | 5 | 路由 eval：关系题 → `query_relations`；制度题 → `search_policies` | routing 通过 |
@@ -65,27 +65,26 @@ uv run python tests/eval/run_graph_compare.py
 ## 生产形态（当前实现）
 
 ```text
-语料 MD/CSV
-  ├─ 规则 ETL：表格/有序列表优先，保留确定性结构
-  ├─ LLMGraphTransformer 风格抽取：自动识别实体、类型、属性、关系、关系属性和证据
-  ├─ 统一 GraphDocument：规则结果与 LLM 结果合并，实体/关系保留来源与置信度
-  └─ 按 SourceDoc.file_hash 增量；变更先删该 source 的边再 MERGE
+语料 MD
+  ├─ LLMGraphTransformer 风格抽取：自动识别实体、类型、属性、关系和顺序
+  ├─ 实体类型/关系名称确定性规范化；同文档 ID 映射到规范显示名
+  └─ 全部抽取成功后，按 SourceDoc.file_hash + pipeline_version 单事务替换
         ▼
      Neo4j
         ▼
-问句 → 便宜模型生成通用 GraphPlan（intent/entities/relations/hops）
-        → 实体链接（姓名/工号）
+问句 → 只召回相关实体候选和真实关系类型
+        → 便宜模型生成通用 GraphPlan（intent/entities/entity_types/relations/hops/filters）
         → 仅跑参数化 Cypher 模板（禁止把 LLM 生成的 Cypher 直接执行）
 ```
 
-LLM 规划失败时用本体词典降级（「上级/依赖/审批链」），**不**把流程名写死成「费用报销」。
+LLM 规划失败时显式失败；未知关系类型按当前图库白名单拒绝，禁止旧领域词典猜测。
 
 ### 进度（2026-08-20 验收）
 
 | 项 | 结果 |
 |----|------|
-| `--ingest-graph` | Person=10 Service=5 Step=4，基础业务边 16；通用 GraphDocument 运行时总边 28 |
-| 单测 | **63** passed（`--ignore=tests/eval`；图单测不连 Neo4j） |
+| `--ingest-graph` | 3 个来源；无重复实体、无缺失主键；包含 REPORTS_TO / DEPENDS_ON / NEXT_STEP |
+| 单测 | **72** passed（`--ignore=tests/eval`） |
 | routing | **9/9**（含 3 道关系题 → `query_relations`） |
 | golden | 33/34（3 道关系题标 `skip_direct_eval` 不计） |
 | ReAct 手测 3 题 | 均选 `query_relations` 且答对 |

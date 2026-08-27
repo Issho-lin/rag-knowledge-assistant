@@ -80,10 +80,10 @@ flowchart TD
 
 | 步骤 | 模块 | 说明 |
 |------|------|------|
-| 取目录 | `graph/query._catalog` | 从 Neo4j 读人名/工号、服务名、流程名，作为规划与实体链接的候选集 |
-| 出计划 | `graph/plan.plan_graph_query` | cheap LLM 产出 `GraphPlan(pattern, entity, hops, exact_hops, process)`，经 Pydantic 校验；失败降级 `infer_plan_from_lexicon` |
-| 实体链接 | `graph/identity.IdentityIndex` | 把「周凯」「XY003」这类写法统一到图里的规范名 |
-| 执行 | `graph/query.execute_plan` | 按 pattern 选 Cypher 模板，实体走 `$name` 参数，跳数只来自校验后的 1–3 整数 |
+| 取目录 | `graph/query._catalog` | 仅召回问题命中的实体/别名候选，并读取真实实体类型与关系类型 |
+| 出计划 | `graph/plan.plan_graph_query` | cheap LLM 产出严格 `GraphPlan(intent, entities, entity_types, relation_types, hops, filters)`；失败显式报错 |
+| 实体链接 | `graph/query.query_relations` | 用候选实体的规范名和 aliases 对齐模型结果，不绑定人员或工号 |
+| 执行 | `graph/query.execute_plan` | 按通用 intent 选固定模板；关系必须存在于图库，实体/过滤值全部参数化 |
 | 转 chunk | `graph/query._chunks` | 把路径拼成自然语言（`周凯 → 何北 → 苏晚`），伪造 `score` 递减，`kb=relations` |
 
 **LLM 不写 Cypher**，只填计划里的几个受限字段；模板是代码里写死的。这样既拿到自然语言理解能力，又不用防注入。
