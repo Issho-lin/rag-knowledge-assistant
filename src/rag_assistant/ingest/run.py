@@ -11,7 +11,7 @@ from pathlib import Path
 from ..core.config import get_settings
 from ..core.logging import configure_logging, get_logger
 from ..core.paths import BM25_PATH, UNIFIED_CHROMA, bm25_path_for_kb, chroma_path_for_kb
-from ..kb import kb_profile_for_doc, list_vector_kbs, resolve_kb_id
+from ..kb import get_kb, list_vector_kbs, resolve_kb_id
 from ..retrieval.bm25_store import create_bm25_store
 from ..retrieval.opensearch_bm25 import OpenSearchBM25Store
 from ..retrieval.metadata import build_chunk_metadata
@@ -132,7 +132,7 @@ class _LiveDoc:
 def _chunk_live_doc(live: _LiveDoc) -> dict[str, list]:
     d = live.doc
     kind = str(d.metadata.get("kind", ""))
-    profile = kb_profile_for_doc(d)
+    profile = get_kb(live.kb_id).profile
     chunk_infos = chunk_document(d, profile.max_chars, profile.chunk_strategy)
     batch: dict[str, list] = {"ids": [], "chunks": [], "sources": [], "metadatas": []}
     for i, info in enumerate(chunk_infos):
@@ -294,3 +294,54 @@ def ingest(*, reset: bool = False, only: str | None = None) -> int:
     else:
         print("BM25 索引: data/chroma/<kb_id>/bm25.pkl")
     return total
+
+
+def upsert_documents(docs: list[Document], *, kb_id: str) -> dict[str, int]:
+    """只写入给定文档，不把库内其它文档当成缺失删除。"""
+    kb = get_kb(kb_id)
+    if kb.backend != "vector":
+        raise ValueError(f"kb={kb_id} 不是向量库，不能走文档 upsert")
+    if not docs:
+        return {"chunks": 0, "docs": 0}
+
+    corpus_name = kb.corpus_names[0] if kb.corpus_names else "uploads"
+    live_docs: dict[str, _LiveDoc] = {}
+    for d in docs:
+        d.metadata["corpus"] = corpus_name
+        d.metadata["kb"] = kb_id
+        live = _LiveDoc(
+            doc=d,
+            doc_id=document_id(d.source),
+            file_hash=content_hash(d.source, d.text),
+            corpus=corpus_name,
+            kb_id=kb_id,
+        )
+        live_docs[live.doc_id] = live
+
+    store = create_vector_store(kb_id=kb_id)
+    bm25 = create_bm25_store(kb_id=kb_id)
+    remove_ids = list(live_docs)
+    store.delete_by_doc_ids(remove_ids)
+    bm25.delete_by_doc_ids(remove_ids)
+
+    batch: dict[str, list] = {"ids": [], "chunks": [], "sources": [], "metadatas": []}
+    for doc_id in sorted(live_docs):
+        part = _chunk_live_doc(live_docs[doc_id])
+        for key in batch:
+            batch[key].extend(part[key])
+    written = 0
+    if batch["chunks"]:
+        written = store.add(
+            batch["chunks"],
+            batch["sources"],
+            ids=batch["ids"],
+            metadatas=batch["metadatas"],
+        )
+        bm25.upsert(
+            batch["ids"],
+            batch["chunks"],
+            batch["sources"],
+            metadatas=batch["metadatas"],
+        )
+    log.info("ingest.upsert", kb=kb_id, docs=len(live_docs), chunks=written)
+    return {"chunks": written, "docs": len(live_docs)}

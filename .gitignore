@@ -14,6 +14,9 @@ data/eval/results/
 # Vision caption 缓存（按 file_hash 重建）
 data/cache/
 
+# 控制台上传暂存
+data/uploads/
+
 # large third-party clones (optional); 内部练习语料 data/corpus/internal/ 纳入版本库
 data/corpus/markdown/
 

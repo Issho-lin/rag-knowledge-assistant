@@ -147,6 +147,28 @@ class QdrantVectorStore:
         except Exception:
             return 0
 
+    def scroll_records(self) -> list[dict[str, Any]]:
+        if self.count() == 0:
+            return []
+        out: list[dict[str, Any]] = []
+        offset = None
+        while True:
+            records, offset = self._client.scroll(
+                collection_name=self._collection,
+                with_payload=True,
+                with_vectors=False,
+                limit=256,
+                offset=offset,
+            )
+            for rec in records:
+                payload = dict(rec.payload or {})
+                doc = str(payload.pop("text", ""))
+                chunk_id = str(payload.pop("chunk_id", rec.id))
+                out.append(chunk_from_hit(payload, text=doc, doc_id=chunk_id, score=0.0))
+            if offset is None:
+                break
+        return out
+
     def list_doc_fingerprints(self) -> dict[str, tuple[str, str]]:
         """从 Qdrant 里扫出「已经入库的文档指纹」，给 _sync_kb 对照用。"""
         if self.count() == 0:

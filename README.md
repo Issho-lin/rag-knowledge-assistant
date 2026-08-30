@@ -49,6 +49,7 @@ src/rag_assistant/
   retrieval/     # 向量、BM25、hybrid、rerank、engine
   answer/        # generate、refusal
   query/         # retrieve、preprocess、modes（direct / agent_route / agent_react）
+  api/           # 知识控制台 FastAPI
 tests/eval/      # golden、routing、compare、graph_compare
 data/corpus/     # 语料（源文档）
 data/chroma/     # Chroma 索引（VECTOR_BACKEND=chroma 时，不进 Git）
@@ -86,6 +87,10 @@ uv run python -m rag_assistant.pipeline --chat --react
 
 # Web
 uv run python -m rag_assistant.ui --no-inbrowser
+
+# 知识控制台（上传 / 切片预览 / 问答）
+uv run python -m rag_assistant.api
+# 打开 http://127.0.0.1:8000  · 规格见 docs/product-console.md
 
 # 评测
 uv run pytest tests/ -q --ignore=tests/eval

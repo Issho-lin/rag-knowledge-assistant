@@ -109,6 +109,24 @@ def load_pdf(path: Path) -> Document:
     )
 
 
+def load_file(path: Path) -> Document:
+    """按扩展名加载单个文件；不识别的类型抛 ValueError。"""
+    suffix = path.suffix.lower()
+    if suffix == ".md":
+        return load_markdown(path)
+    if suffix in {".html", ".htm"}:
+        return load_html(path)
+    if suffix == ".csv":
+        return load_csv(path)
+    if suffix == ".pdf":
+        return load_pdf(path)
+    from .vision_caption import is_image_path
+
+    if is_image_path(path):
+        return load_image(path)
+    raise ValueError(f"不支持的文件类型: {path.suffix or path.name}")
+
+
 def load_image(path: Path) -> Document:
     """图像为事实源：VLM 自动 caption 后入库；source 指向图像路径。"""
     from .vision_caption import caption_image

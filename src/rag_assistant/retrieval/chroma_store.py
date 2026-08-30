@@ -45,6 +45,8 @@ class VectorStoreBackend(Protocol):
 
     def purge_unfingerprinted(self) -> int: ...
 
+    def scroll_records(self) -> list[dict[str, Any]]: ...
+
 
 class ChromaVectorStore:
     def __init__(
@@ -134,6 +136,18 @@ class ChromaVectorStore:
             return self._coll.count()
         except Exception:
             return 0
+
+    def scroll_records(self) -> list[dict[str, Any]]:
+        if self.count() == 0:
+            return []
+        data = self._coll.get(include=["documents", "metadatas"])
+        out: list[dict[str, Any]] = []
+        ids = data.get("ids") or []
+        docs = data.get("documents") or []
+        metas = data.get("metadatas") or []
+        for cid, doc, meta in zip(ids, docs, metas):
+            out.append(chunk_from_hit(meta or {}, text=doc or "", doc_id=cid, score=0.0))
+        return out
 
     def list_doc_fingerprints(self) -> dict[str, tuple[str, str]]:
         """doc_id -> (file_hash, corpus)。无 doc_id 的遗留 chunk 不计入。"""

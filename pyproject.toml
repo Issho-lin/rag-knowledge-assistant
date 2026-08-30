@@ -30,6 +30,9 @@ dependencies = [
     "structlog>=24.1",                   # 结构化（JSON）日志
     # --- 可观测性 ---
     "langfuse>=2.0",                     # 追踪每次 LLM：prompt/token/延迟/成本
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "python-multipart>=0.0.9",
     # --- 评估（第 4 周）---
     "ragas>=0.1",                        # RAG 专用指标
     "numpy>=1.26",
@@ -44,6 +47,7 @@ dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
     "ruff>=0.5",
+    "httpx>=0.27",
 ]
 ui = [
     "gradio>=5.0",
